@@ -1,0 +1,31 @@
+
+{
+  "appId": "com.mjak.automation",
+  "productName": "MJAK Automation",
+  "directories": {
+    "output": "dist-electron"
+  },
+  "files": [
+    "dist/**/*",
+    "electron/**/*",
+    "!os/**/*",
+    "!src/**/*",
+    "!public/**/*"
+  ],
+  "extraResources": [
+    {
+      "from": "os/dist/api_server.exe",
+      "to": "python-dist/api_server.exe"
+    }
+  ],
+  "win": {
+    "target": "nsis",
+    "icon": "public/favicon.ico"
+  },
+  "nsis": {
+    "oneClick": false,
+    "allowToChangeInstallationDirectory": true,
+    "createDesktopShortcut": true,
+    "createStartMenuShortcut": true
+  }
+}
