@@ -6,6 +6,7 @@ const isDev = process.env.NODE_ENV === 'development';
 
 let mainWindow;
 let pythonProcess;
+let automateProcess;
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -21,6 +22,8 @@ function createWindow() {
 
   // Start Python API server
   startPythonServer();
+  // Start Automate Script
+  startAutomateScript();
 
   // Load the React app
   if (isDev) {
@@ -34,6 +37,9 @@ function createWindow() {
     mainWindow = null;
     if (pythonProcess) {
       pythonProcess.kill();
+    }
+    if (automateProcess) {
+      automateProcess.kill();
     }
   });
 }
@@ -66,11 +72,40 @@ function startPythonServer() {
   });
 }
 
+function startAutomateScript() {
+  // In dev, run: python -m operate.main
+  // In prod, run: python (or bundled python) -m operate.main
+  const pythonExecutable = isDev 
+    ? 'python' 
+    : 'python'; // For production, ensure python is bundled or in PATH
+  const args = ['-m', 'operate.main'];
+  const cwd = isDev ? path.join(__dirname, '../os') : process.resourcesPath;
+
+  console.log('Starting Automate Script:', pythonExecutable, args.join(' '));
+
+  automateProcess = spawn(pythonExecutable, args, { cwd });
+
+  automateProcess.stdout && automateProcess.stdout.on('data', (data) => {
+    console.log(`Automate: ${data}`);
+  });
+
+  automateProcess.stderr && automateProcess.stderr.on('data', (data) => {
+    console.error(`Automate Error: ${data}`);
+  });
+
+  automateProcess.on('close', (code) => {
+    console.log(`Automate process exited with code ${code}`);
+  });
+}
+
 app.whenReady().then(createWindow);
 
 app.on('window-all-closed', () => {
   if (pythonProcess) {
     pythonProcess.kill();
+  }
+  if (automateProcess) {
+    automateProcess.kill();
   }
   if (process.platform !== 'darwin') {
     app.quit();
