@@ -4,6 +4,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Upload, LogOut } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { useNavigate } from 'react-router-dom';
 import { spotifyService } from '@/services/spotifyService';
 import { automateService } from '@/services/automateService';
 import { documentService } from '@/services/documentService';
@@ -29,6 +30,7 @@ const FloatingActionButtons: React.FC<FloatingActionButtonsProps> = ({
 }) => {
   const { signOut, user } = useAuth();
   const { toast } = useToast();
+  const navigate = useNavigate();
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -63,11 +65,16 @@ const FloatingActionButtons: React.FC<FloatingActionButtonsProps> = ({
         variant: "destructive"
       });
     }
-    event.target.value = ''; // Clear the input
+    event.target.value = '';
   };
 
-  const handleLogout = () => {
-    signOut();
+  const handleLogout = async () => {
+    try {
+      await signOut();
+      navigate('/');
+    } catch (error) {
+      console.error('Logout error:', error);
+    }
   };
 
   const handleSpotifyToggle = async () => {
