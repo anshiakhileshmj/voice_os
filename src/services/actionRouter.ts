@@ -23,16 +23,16 @@ export class ActionRouter {
   async processUserInput(
     userInput: string,
     conversationHistory: ConversationMessage[],
-    isAutomateEnabled: boolean = true // Set default to true
+    isAutomateEnabled: boolean = true
   ): Promise<{ intent: IntentResult; actionResult?: ActionResult; llmResponse?: string }> {
     
-    // First, detect intent using enhanced LLM
-    const intent = await this.detectIntent(userInput, conversationHistory, isAutomateEnabled);
+    // Enhanced intent detection that can handle both automation and conversation
+    const intent = await this.detectIntentWithDualMode(userInput, conversationHistory, isAutomateEnabled);
     
     let actionResult: ActionResult | undefined;
     let llmResponse: string | undefined;
 
-    // Route based on intent
+    // Route based on intent - now with dual mode support
     switch (intent.intent) {
       case 'automate_action':
         actionResult = await this.handleAutomateAction(intent.params);
@@ -68,7 +68,7 @@ export class ActionRouter {
         
       case 'conversation':
       default:
-        // Handle as normal conversation
+        // Handle as normal conversation using Together AI
         const { response } = await llmService.generateResponse(userInput, conversationHistory);
         llmResponse = response;
         
@@ -80,16 +80,27 @@ export class ActionRouter {
     return { intent, actionResult, llmResponse };
   }
 
-  private async detectIntent(
+  private async detectIntentWithDualMode(
     userInput: string,
     conversationHistory: ConversationMessage[],
     isAutomateEnabled: boolean
   ): Promise<IntentResult> {
+    // Enhanced system prompt for dual mode detection
     const automateIntentText = isAutomateEnabled 
-      ? ', "automate_action": detect requests to automate computer tasks like "open google", "open notepad", "launch calculator", "start word", "take a screenshot", "close window", "type text", "move mouse", "click button", etc.'
-      : '';
+      ? `
+- "automate_action": detect clear automation requests like "open google", "open notepad", "launch calculator", "start word", "take a screenshot", "close window", "type text", "move mouse", "click button", "open file", "save document", etc. These should be SPECIFIC computer actions.
+- "conversation": detect general conversation, questions, casual talk, requests for information, discussions that are NOT specific computer automation commands.
 
-    const systemPrompt = `You are an intent detection system. Analyze the user's input and respond with a JSON object containing:
+IMPORTANT: When automation is enabled, you must distinguish between:
+1. AUTOMATION commands: Clear, specific computer actions (open apps, click things, type text, etc.)
+2. CONVERSATION: General chat, questions, information requests, casual talk
+
+Examples of AUTOMATION: "open notepad", "click the start button", "type hello world", "launch chrome", "take screenshot"
+Examples of CONVERSATION: "how are you", "what's the weather", "tell me about AI", "what can you do", "I'm feeling sad"
+`
+      : ', "conversation": all general conversation and questions since automation is disabled';
+
+    const systemPrompt = `You are an intent detection system with dual mode capability. Analyze the user's input and respond with a JSON object containing:
 - intent: one of ["connect_spotify", "play_song", "check_spotify_status", "startup_greeting", "location_query", "document_capabilities", "document_processing", "automate_action", "conversation"]  
 - confidence: number between 0-1
 - params: object with extracted parameters
@@ -103,34 +114,12 @@ Intent definitions:
 - "play_song": extract artist and song from phrases like "play [song] by [artist]", "play [artist]", etc.
 - "connect_spotify": detect requests to connect/link/authorize Spotify
 - "check_spotify_status": detect requests about Spotify connection status${automateIntentText}
-- "automate_action": detect requests to automate computer tasks (e.g., open apps, control windows, type, click, etc.). For these, extract the user's objective as 'objective' in params. The automation backend expects clear, actionable objectives and will generate JSON instructions for the Python automation system under the 'os' directory.
-- "conversation": everything else
 
-Examples:
-- "hello" → {"intent":"startup_greeting","confidence":0.9}
-- "what time is it" → {"intent":"location_query","confidence":0.9,"params":{"query_type":"time"}}
-- "what's my location" → {"intent":"location_query","confidence":0.95,"params":{"query_type":"location"}}  
-- "can you process documents" → {"intent":"document_capabilities","confidence":0.9}
-- "summarize this file" → {"intent":"document_processing","confidence":0.9,"params":{"action":"summarize"}}
-- "summarize the pdf" → {"intent":"document_processing","confidence":0.95,"params":{"action":"summarize"}}
-- "extract text from document" → {"intent":"document_processing","confidence":0.9,"params":{"action":"extract"}}
-- "format my document" → {"intent":"document_processing","confidence":0.9,"params":{"action":"format"}}
-- "question about the document" → {"intent":"document_processing","confidence":0.9,"params":{"action":"question"}}
-- "summarize (document: doc-123)" → {"intent":"document_processing","confidence":0.95,"params":{"action":"summarize","documentId":"doc-123"}}
-- "play bohemian rhapsody by queen" → {"intent":"play_song","confidence":0.95,"params":{"artist":"queen","song":"bohemian rhapsody"}}
-- "connect my spotify" → {"intent":"connect_spotify","confidence":0.9}
-- "open notepad" → {"intent":"automate_action","confidence":0.95,"params":{"objective":"open notepad"}}
-- "launch calculator" → {"intent":"automate_action","confidence":0.95,"params":{"objective":"launch calculator"}}
-- "start word" → {"intent":"automate_action","confidence":0.95,"params":{"objective":"start word"}}
-- "take a screenshot" → {"intent":"automate_action","confidence":0.95,"params":{"objective":"take a screenshot"}}
-- "close window" → {"intent":"automate_action","confidence":0.95,"params":{"objective":"close window"}}
-- "type hello world" → {"intent":"automate_action","confidence":0.95,"params":{"objective":"type hello world"}}
-- "move mouse to top left" → {"intent":"automate_action","confidence":0.95,"params":{"objective":"move mouse to top left"}}
-- "click the start button" → {"intent":"automate_action","confidence":0.95,"params":{"objective":"click the start button"}}
+For automation commands, extract the user's objective as 'objective' in params.
 
 Special note: If the input contains "(document: [id])", extract the document ID and include it in params.
 
-IMPORTANT: For 'automate_action', the backend expects the objective to be actionable and will generate JSON instructions for the Python automation system (see files under the 'os' directory). Do not return code, only JSON and clear objectives.
+CRITICAL: Be precise in distinguishing automation vs conversation when automation is enabled. Only classify as "automate_action" if it's a clear computer automation command.
 
 Respond ONLY with valid JSON.`;
 
