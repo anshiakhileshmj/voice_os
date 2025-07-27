@@ -7,15 +7,15 @@ import { Switch } from '@/components/ui/switch';
 import { Mic, MicOff, Download, Trash2, Volume2, VolumeX, LogOut, Bot } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
-import { useNavigate } from 'react-router-dom';
 import { textToSpeechService, AVAILABLE_VOICES } from '@/services/textToSpeechService';
 import { llmService, ConversationMessage } from '@/services/llmService';
 import { actionRouter } from '@/services/actionRouter';
 import { spotifyService } from '@/services/spotifyService';
 import { automateService } from '@/services/automateService';
-import { userHistoryService } from '@/services/userHistoryService';
 import { supabase } from '@/integrations/supabase/client';
-import FloatingActionButtons from '@/components/FloatingActionButtons';
+import DocumentUpload from '@/components/DocumentUpload';
+import spotifyIcon from '@/assets/spotify-icon.svg';
+import AutomatePowerSwitch from '../components/AutomatePowerSwitch';
 import AnimatedCallButton from '../components/AnimatedCallButton';
 
 interface TranscriptEntry {
@@ -24,10 +24,8 @@ interface TranscriptEntry {
   timestamp: Date;
   confidence?: number;
 }
-
 const Index = () => {
   const { user, loading, signOut } = useAuth();
-  const navigate = useNavigate();
   const [isRecording, setIsRecording] = useState(false);
   const [transcript, setTranscript] = useState<TranscriptEntry[]>([]);
   const [currentTranscript, setCurrentTranscript] = useState('');
@@ -50,7 +48,7 @@ const Index = () => {
   // Redirect to auth if not logged in and get user name
   useEffect(() => {
     if (!loading && !user) {
-      navigate('/auth');
+      window.location.href = '/auth';
     } else if (user) {
       // Get user profile to fetch name
       const getUserProfile = async () => {
@@ -68,7 +66,7 @@ const Index = () => {
       };
       getUserProfile();
     }
-  }, [user, loading, navigate]);
+  }, [user, loading]);
 
   // Check automation service connection
   useEffect(() => {
@@ -229,6 +227,7 @@ const Index = () => {
            userInput.toLowerCase().includes('extract') || 
            userInput.toLowerCase().includes('format') ||
            userInput.toLowerCase().includes('question'))) {
+        // Add document context to the input
         enrichedInput = `${userInput} (document: ${lastUploadedDocument.id})`;
       }
 
@@ -240,16 +239,6 @@ const Index = () => {
       );
 
       console.log('Intent detected:', intent);
-
-      // Save user command to history
-      if (user) {
-        await userHistoryService.saveUserCommand(
-          userInput,
-          intent.intent,
-          actionResult?.message || llmResponse || '',
-          user.id
-        );
-      }
 
       // Handle action results
       if (actionResult) {
@@ -481,7 +470,7 @@ const Index = () => {
     if (!isRecording) {
       setTimeout(() => {
         startRecording();
-      }, 3000);
+      }, 3000); // Give 3 seconds for the TTS to finish
     }
   };
 
@@ -497,7 +486,7 @@ const Index = () => {
   }
 
   if (!user) {
-    return null;
+    return null; // Will redirect to auth
   }
 
   if (!isSupported) {
@@ -623,33 +612,187 @@ const Index = () => {
           />
         </div>
 
-        {/* Live Transcript - Updated background to match main page */}
+      
+
+        {/* Live Transcript */}
         {(currentTranscript || isRecording) && (
-          <Card className="border-0 shadow-lg bg-gradient-to-r from-blue-50 to-purple-50 border-blue-200" style={{ background: 'rgb(33,33,33)' }}>
+          <Card className="border-0 shadow-lg bg-gradient-to-r from-blue-50 to-purple-50 border-blue-200">
             <CardHeader>
-              <CardTitle className="text-sm font-medium text-blue-300 flex items-center gap-2">
+              <CardTitle className="text-sm font-medium text-blue-700 flex items-center gap-2">
                 <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
                 Live Transcript
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-lg text-gray-200 min-h-[3rem] leading-relaxed">
+              <p className="text-lg text-gray-700 min-h-[3rem] leading-relaxed">
                 {currentTranscript || (isRecording ? "Listening..." : "")}
               </p>
             </CardContent>
           </Card>
         )}
 
-        {/* Floating Action Buttons */}
-        <FloatingActionButtons
-          isSpotifyEnabled={isSpotifyEnabled}
-          isSpotifyConnected={isSpotifyConnected}
-          isAutomateEnabled={isAutomateEnabled}
-          isAutomateConnected={isAutomateConnected}
-          onSpotifyToggle={setIsSpotifyEnabled}
-          onAutomateToggle={setIsAutomateEnabled}
-          onDocumentUpload={handleDocumentUpload}
-        />
+        {/* Transcript History */}
+        <Card className="border-0 shadow-lg bg-white/80 backdrop-blur-sm">
+          <CardHeader>
+            <CardTitle className="flex items-center justify-between">
+              <span>Transcript History</span>
+              {transcript.length > 0 && (
+                <Badge variant="secondary" className="bg-blue-100 text-blue-700">
+                  {transcript.length} entries
+                </Badge>
+              )}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {transcript.length === 0 ? (
+              <div className="text-center py-12">
+                <Mic className="w-12 h-12 mx-auto text-muted-foreground mb-4 opacity-50" />
+                <p className="text-muted-foreground text-lg">No transcripts yet</p>
+                <p className="text-sm text-muted-foreground mt-2">
+                  Click "Start Recording" to begin transcribing your speech
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-4 max-h-96 overflow-y-auto">
+                {transcript.map((entry, index) => (
+                  <div
+                    key={entry.id}
+                    className="p-4 bg-gradient-to-r from-gray-50 to-blue-50 rounded-lg border border-gray-200 hover:shadow-md transition-shadow duration-200"
+                  >
+                    <div className="flex items-start justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline" className="text-xs">
+                          #{index + 1}
+                        </Badge>
+                        {textToSpeechService.isConfigured() && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => handleTextToSpeech(entry.text)}
+                            disabled={isPlayingTTS}
+                            className="h-6 px-2 text-xs"
+                          >
+                            {isPlayingTTS ? (
+                              <VolumeX className="w-3 h-3" />
+                            ) : (
+                              <Volume2 className="w-3 h-3" />
+                            )}
+                          </Button>
+                        )}
+                      </div>
+                      <div className="text-xs text-muted-foreground flex items-center gap-2">
+                        <span>{formatTimestamp(entry.timestamp)}</span>
+                        {entry.confidence && (
+                          <Badge variant="secondary" className="text-xs">
+                            {Math.round(entry.confidence * 100)}% confidence
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+                    <p className="text-gray-800 leading-relaxed">{entry.text}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Document Upload */}
+        <DocumentUpload onDocumentProcessed={handleDocumentUpload} />
+
+        {/* Floating Action Button (FAB) and Menu */}
+        <div style={{ position: 'fixed', right: 32, bottom: 32, zIndex: 100 }}>
+          <div className="relative flex flex-col items-end">
+            {/* Action Buttons (show when fabOpen) */}
+            <div className={`flex flex-col items-end gap-4 mb-2 transition-all duration-300 ${fabOpen ? 'opacity-100 translate-y-0' : 'opacity-0 pointer-events-none translate-y-4'}`}>
+              {/* Spotify Button */}
+              <button
+                className="w-[60px] h-[60px] flex items-center justify-center p-1 rounded-full border border-green-500/20 bg-[#181818] shadow-lg hover:shadow-green-500/30 hover:scale-110 transition-all duration-300 group"
+                onClick={() => spotifyService.initiateAuth()}
+                title="Connect Spotify"
+              >
+                <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" className="w-7 h-7" fill="#1DB954">
+                  <title>Spotify</title>
+                  <path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z"/>
+                </svg>
+              </button>
+              {/* Automate Button */}
+              <div className="w-[60px] h-[60px] flex items-center justify-center p-1 rounded-full border border-gray-500/20 bg-[#181818] shadow-lg hover:shadow-gray-500/30 hover:scale-110 transition-all duration-300 group">
+                <AutomatePowerSwitch checked={isAutomateEnabled} onChange={handleAutomateToggle} />
+              </div>
+              {/* Upload Button */}
+              <label className="w-[60px] h-[60px] flex items-center justify-center p-1 rounded-full border border-blue-500/20 bg-[#181818] shadow-lg hover:shadow-blue-500/30 hover:scale-110 transition-all duration-300 group cursor-pointer">
+                <input
+                  type="file"
+                  accept=".pdf"
+                  onChange={async (e) => {
+                    const files = e.target.files;
+                    if (!files || !user) return;
+                    const file = files[0];
+                    if (!(await import('@/services/documentService')).documentService.isFileTypeSupported(file)) {
+                      toast({
+                        title: "Unsupported File Type",
+                        description: "Please upload .pdf files only.",
+                        variant: "destructive"
+                      });
+                      return;
+                    }
+                    setUploading(true);
+                    try {
+                      const { documentService } = await import('@/services/documentService');
+                      const uploadedDoc = await documentService.uploadDocument(file, user.id);
+                      setLastUploadedDocument(uploadedDoc);
+                      toast({
+                        title: "Upload Successful",
+                        description: "Should I summarize the file or if you wish anything else let me know."
+                      });
+                      await handleDocumentUpload("Upload successful! Should I summarize the file or if you wish anything else let me know.", uploadedDoc);
+                    } catch (error) {
+                      toast({
+                        title: "Upload Failed",
+                        description: error instanceof Error ? error.message : "Failed to upload document.",
+                        variant: "destructive"
+                      });
+                    } finally {
+                      setUploading(false);
+                      e.target.value = '';
+                    }
+                  }}
+                  className="hidden"
+                />
+                {/* Inline SVG PDF icon, blue color */}
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640" className="w-8 h-8" fill="#3b82f6">
+                  <path d="M128 64C92.7 64 64 92.7 64 128L64 512C64 547.3 92.7 576 128 576L208 576L208 464C208 428.7 236.7 400 272 400L448 400L448 234.5C448 217.5 441.3 201.2 429.3 189.2L322.7 82.7C310.7 70.7 294.5 64 277.5 64L128 64zM389.5 240L296 240C282.7 240 272 229.3 272 216L272 122.5L389.5 240zM272 444C261 444 252 453 252 464L252 592C252 603 261 612 272 612C283 612 292 603 292 592L292 564L304 564C337.1 564 364 537.1 364 504C364 470.9 337.1 444 304 444L272 444zM304 524L292 524L292 484L304 484C315 484 324 493 324 504C324 515 315 524 304 524zM400 444C389 444 380 453 380 464L380 592C380 603 389 612 400 612L432 612C460.7 612 484 588.7 484 560L484 496C484 467.3 460.7 444 432 444L400 444zM420 572L420 484L432 484C438.6 484 444 489.4 444 496L444 560C444 566.6 438.6 572 432 572L420 572zM508 464L508 592C508 603 517 612 528 612C539 612 548 603 548 592L548 548L576 548C587 548 596 539 596 528C596 517 587 508 576 508L548 508L548 484L576 484C587 484 596 475 596 464C596 453 587 444 576 444L528 444C517 444 508 453 508 464z"/>
+                </svg>
+              </label>
+              {/* Logout Button */}
+              <button
+                onClick={signOut}
+                className="w-[60px] h-[60px] flex items-center justify-center p-1 rounded-full border border-red-500/20 bg-[#181818] shadow-lg hover:shadow-red-500/30 hover:scale-110 transition-all duration-300 group"
+                title="Logout"
+              >
+                <svg className="w-7 h-7 text-red-500 group-hover:text-red-400 transition-colors duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                </svg>
+              </button>
+            </div>
+            {/* Main FAB (+) Button */}
+            <button
+              className={`relative w-[60px] h-[60px] rounded-full bg-[#2e2e2e] shadow-lg flex items-center justify-center transition-all duration-200 ${fabOpen ? 'scale-90' : 'scale-100'}`}
+              style={{ boxShadow: '0 6px 10px 0 rgba(0,0,0,0.3)' }}
+              onClick={() => setFabOpen(v => !v)}
+              aria-label="Open actions"
+            >
+              <svg className={`transition-transform duration-500 w-[30px] h-[30px] ${fabOpen ? 'rotate-45' : 'rotate-0'}`} viewBox="0 0 48 48" width="48" height="48">
+                <circle cx="24" cy="24" r="24" fill="none" />
+                <g>
+                  <rect x="22" y="12" width="4" height="24" rx="2" fill="#fff" />
+                  <rect x="12" y="22" width="24" height="4" rx="2" fill="#fff" />
+                </g>
+              </svg>
+            </button>
+          </div>
+        </div>
 
         {/* Footer */}
         <div className="text-center text-sm text-muted-foreground">
