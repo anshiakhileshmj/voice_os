@@ -1,7 +1,7 @@
 
-const { contextBridge } = require('electron');
+const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('electronAPI', {
-  // Add any electron-specific APIs here if needed
-  platform: process.platform
+  searchPDFFile: (filename) => ipcRenderer.invoke('search-pdf-file', filename),
+  getAllPDFFiles: () => ipcRenderer.invoke('get-all-pdf-files'),
 });

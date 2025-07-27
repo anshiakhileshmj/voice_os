@@ -2,6 +2,7 @@ import { spotifyService } from './spotifyService';
 import { llmService, ConversationMessage } from './llmService';
 import { locationService } from './locationService';
 import { documentService } from './documentService';
+import { fileSystemService } from './fileSystemService';
 import { automateService, AutomateAction } from './automateService';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -23,7 +24,8 @@ export class ActionRouter {
   async processUserInput(
     userInput: string,
     conversationHistory: ConversationMessage[],
-    isAutomateEnabled: boolean = true
+    isAutomateEnabled: boolean = true,
+    isCallActive: boolean = true
   ): Promise<{ intent: IntentResult; actionResult?: ActionResult; llmResponse?: string }> {
     
     // Enhanced intent detection that can handle both automation and conversation
@@ -35,7 +37,7 @@ export class ActionRouter {
     // Route based on intent - now with dual mode support
     switch (intent.intent) {
       case 'automate_action':
-        actionResult = await this.handleAutomateAction(intent.params);
+        actionResult = await this.handleAutomateAction(intent.params, isCallActive);
         break;
         
       case 'connect_spotify':
@@ -65,15 +67,24 @@ export class ActionRouter {
       case 'document_processing':
         actionResult = await this.handleDocumentProcessing(intent.params);
         break;
+
+      case 'file_system_document':
+        actionResult = await this.handleFileSystemDocument(intent.params);
+        break;
         
       case 'conversation':
       default:
         // Handle as normal conversation using Together AI
-        const { response } = await llmService.generateResponse(userInput, conversationHistory);
-        llmResponse = response;
-        
-        // Store conversation in history
-        await this.storeConversationHistory(userInput, intent.intent, response);
+        if (isCallActive) {
+          const { response } = await llmService.generateResponse(userInput, conversationHistory);
+          llmResponse = response;
+          
+          // Store conversation in history
+          await this.storeConversationHistory(userInput, intent.intent, response);
+        } else {
+          // Don't respond if call is not active
+          llmResponse = undefined;
+        }
         break;
     }
 
@@ -89,19 +100,22 @@ export class ActionRouter {
     const automateIntentText = isAutomateEnabled 
       ? `
 - "automate_action": detect clear automation requests like "open google", "open notepad", "launch calculator", "start word", "take a screenshot", "close window", "type text", "move mouse", "click button", "open file", "save document", etc. These should be SPECIFIC computer actions.
+- "file_system_document": detect requests to access local PDF files like "find file abc.pdf", "summarize document xyz.pdf", "tell me about file named report.pdf", "access my file called invoice.pdf", etc.
 - "conversation": detect general conversation, questions, casual talk, requests for information, discussions that are NOT specific computer automation commands.
 
 IMPORTANT: When automation is enabled, you must distinguish between:
 1. AUTOMATION commands: Clear, specific computer actions (open apps, click things, type text, etc.)
-2. CONVERSATION: General chat, questions, information requests, casual talk
+2. FILE SYSTEM access: Requests to access, read, or process local PDF files
+3. CONVERSATION: General chat, questions, information requests, casual talk
 
 Examples of AUTOMATION: "open notepad", "click the start button", "type hello world", "launch chrome", "take screenshot"
+Examples of FILE SYSTEM: "find abc.pdf", "summarize my document report.pdf", "tell me about invoice.pdf"
 Examples of CONVERSATION: "how are you", "what's the weather", "tell me about AI", "what can you do", "I'm feeling sad"
 `
       : ', "conversation": all general conversation and questions since automation is disabled';
 
     const systemPrompt = `You are an intent detection system with dual mode capability. Analyze the user's input and respond with a JSON object containing:
-- intent: one of ["connect_spotify", "play_song", "check_spotify_status", "startup_greeting", "location_query", "document_capabilities", "document_processing", "automate_action", "conversation"]  
+- intent: one of ["connect_spotify", "play_song", "check_spotify_status", "startup_greeting", "location_query", "document_capabilities", "document_processing", "file_system_document", "automate_action", "conversation"]  
 - confidence: number between 0-1
 - params: object with extracted parameters
 - response: brief response if action needed
@@ -111,15 +125,17 @@ Intent definitions:
 - "location_query": asking about city, region, country, time, weather, or location info
 - "document_capabilities": asking what can be done with documents or file processing
 - "document_processing": commands to summarize, extract, format documents, ask questions about files, or document-related requests
+- "file_system_document": requests to access, read, or process local PDF files on the user's system
 - "play_song": extract artist and song from phrases like "play [song] by [artist]", "play [artist]", etc.
 - "connect_spotify": detect requests to connect/link/authorize Spotify
 - "check_spotify_status": detect requests about Spotify connection status${automateIntentText}
 
 For automation commands, extract the user's objective as 'objective' in params.
+For file system document requests, extract the filename as 'filename' in params.
 
 Special note: If the input contains "(document: [id])", extract the document ID and include it in params.
 
-CRITICAL: Be precise in distinguishing automation vs conversation when automation is enabled. Only classify as "automate_action" if it's a clear computer automation command.
+CRITICAL: Be precise in distinguishing automation vs file system access vs conversation when automation is enabled. Only classify as "automate_action" if it's a clear computer automation command, and "file_system_document" if it's requesting access to local PDF files.
 
 Respond ONLY with valid JSON.`;
 
@@ -171,7 +187,7 @@ Respond ONLY with valid JSON.`;
     }
   }
 
-  private async handleAutomateAction(params?: Record<string, any>): Promise<ActionResult> {
+  private async handleAutomateAction(params?: Record<string, any>, isCallActive: boolean = true): Promise<ActionResult> {
     try {
       if (!automateService.isServiceConnected()) {
         const isConnected = await automateService.checkConnection();
@@ -179,7 +195,7 @@ Respond ONLY with valid JSON.`;
           return {
             success: false,
             message: "Automation service is not running. Please start the MJAK automation service first.",
-            requiresTTS: true
+            requiresTTS: isCallActive
           };
         }
       }
@@ -189,7 +205,7 @@ Respond ONLY with valid JSON.`;
         return {
           success: false,
           message: "Please specify what you'd like me to automate.",
-          requiresTTS: true
+          requiresTTS: isCallActive
         };
       }
 
@@ -200,7 +216,7 @@ Respond ONLY with valid JSON.`;
         return {
           success: false,
           message: "I couldn't generate automation steps for that request.",
-          requiresTTS: true
+          requiresTTS: isCallActive
         };
       }
 
@@ -214,14 +230,14 @@ Respond ONLY with valid JSON.`;
         return {
           success: true,
           message: `Successfully automated: ${objective}. Executed ${result.executedActions || actions.length} actions.`,
-          requiresTTS: true,
+          requiresTTS: isCallActive,
           data: { actions, result }
         };
       } else {
         return {
           success: false,
           message: result.message || "Failed to execute automation.",
-          requiresTTS: true
+          requiresTTS: isCallActive
         };
       }
     } catch (error) {
@@ -229,6 +245,78 @@ Respond ONLY with valid JSON.`;
       return {
         success: false,
         message: "Failed to process automation request. Please check if the automation service is running.",
+        requiresTTS: isCallActive
+      };
+    }
+  }
+
+  private async handleFileSystemDocument(params?: Record<string, any>): Promise<ActionResult> {
+    try {
+      const filename = params?.filename;
+      if (!filename) {
+        return {
+          success: false,
+          message: "Please specify which file you'd like me to access.",
+          requiresTTS: true
+        };
+      }
+
+      // Search for the file in the user's system
+      const fileResult = await fileSystemService.searchAndProcessFile(filename);
+      
+      if (!fileResult.found) {
+        return {
+          success: false,
+          message: `I couldn't find the file "${filename}" in your Documents, Downloads, or Desktop folders. ${fileResult.error || ''}`,
+          requiresTTS: true
+        };
+      }
+
+      // Upload the file content to our document service for processing
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        return {
+          success: false,
+          message: "You need to be signed in to process files.",
+          requiresTTS: true
+        };
+      }
+
+      // Create a temporary file object for processing
+      const tempFile = {
+        name: fileResult.fileName || filename,
+        type: 'application/pdf',
+        size: fileResult.content?.length || 0
+      };
+
+      // Upload the document
+      const uploadedDoc = await documentService.uploadDocument({
+        ...tempFile,
+        arrayBuffer: async () => {
+          const base64Data = fileResult.content?.split(',')[1] || '';
+          const binaryString = atob(base64Data);
+          const bytes = new Uint8Array(binaryString.length);
+          for (let i = 0; i < binaryString.length; i++) {
+            bytes[i] = binaryString.charCodeAt(i);
+          }
+          return bytes.buffer;
+        }
+      } as File, user.id);
+
+      // Process the document (summarize by default)
+      const result = await documentService.processDocument(uploadedDoc.id, 'summarize');
+
+      return {
+        success: true,
+        message: `I found and processed "${fileResult.fileName || filename}". Here's the summary: ${result}`,
+        requiresTTS: true,
+        data: { uploadedDoc, result }
+      };
+    } catch (error) {
+      console.error('File system document error:', error);
+      return {
+        success: false,
+        message: "I encountered an error while trying to access your file. Please make sure the file exists and is accessible.",
         requiresTTS: true
       };
     }
@@ -278,7 +366,6 @@ Respond ONLY with valid JSON.`;
         };
       }
 
-      // Check if user has premium
       const profile = await spotifyService.getUserProfile();
       if (profile.product !== 'premium') {
         return {
@@ -288,7 +375,6 @@ Respond ONLY with valid JSON.`;
         };
       }
 
-      // Get active devices
       const devices = await spotifyService.getDevices();
       const activeDevice = devices.find(d => d.is_active);
       
@@ -300,7 +386,6 @@ Respond ONLY with valid JSON.`;
         };
       }
 
-      // Search for track
       const query = song ? `${song} ${artist}` : artist;
       const track = await spotifyService.searchTrack(query);
       
@@ -312,7 +397,6 @@ Respond ONLY with valid JSON.`;
         };
       }
 
-      // Play track
       await spotifyService.playTrack(track.uri, activeDevice?.id);
       
       return {
@@ -372,7 +456,6 @@ Respond ONLY with valid JSON.`;
         };
       }
 
-      // Get user profile
       const { data: profile } = await supabase
         .from('profiles')
         .select('name, last_greeted_at')
@@ -381,7 +464,6 @@ Respond ONLY with valid JSON.`;
 
       const userName = profile?.name || user.email?.split('@')[0] || 'there';
 
-      // Check if we should greet today
       const shouldGreet = await locationService.shouldGreetUser(user.id);
       
       if (!shouldGreet) {
@@ -392,11 +474,9 @@ Respond ONLY with valid JSON.`;
         };
       }
 
-      // Get user location for personalized greeting
       const locationData = await locationService.getUserLocation();
       const greeting = locationService.getGreeting(locationData.timezone, userName);
       
-      // Update last greeted
       await locationService.updateLastGreeted(user.id);
       
       const locationGreeting = `${greeting}! How are things in ${locationData.city}, ${locationData.country}?`;
@@ -440,7 +520,6 @@ Respond ONLY with valid JSON.`;
           break;
           
         default:
-          // General location info
           response = `You're currently in ${locationData.city}, ${locationData.country}. The local time is ${new Date().toLocaleString("en-US", { timeZone: locationData.timezone, hour: '2-digit', minute: '2-digit', hour12: true })}.`;
       }
       
@@ -488,7 +567,6 @@ Respond ONLY with valid JSON.`;
       };
     }
 
-    // Process the document using the existing documentService
     try {
       const result = await documentService.processDocument(documentId, action, question);
       
@@ -516,7 +594,6 @@ Respond ONLY with valid JSON.`;
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      // Get location data if available
       let locationData = null;
       try {
         locationData = await locationService.getUserLocation();
