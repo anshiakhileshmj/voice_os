@@ -20,7 +20,7 @@
   ],
   "win": {
     "target": "nsis",
-    "icon": "o.png"
+    "icon": "public/favicon.ico"
   },
   "nsis": {
     "oneClick": false,

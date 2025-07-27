@@ -1,6 +1,6 @@
+
 const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
-const fs = require('fs');
 const { spawn } = require('child_process');
 const isDev = process.env.NODE_ENV === 'development';
 
@@ -17,7 +17,7 @@ function createWindow() {
       contextIsolation: true,
       preload: path.join(__dirname, 'preload.js')
     },
-    icon: path.join(__dirname, '../o.png')
+    icon: path.join(__dirname, '../public/favicon.ico')
   });
 
   // Start Python API server
@@ -40,111 +40,6 @@ function createWindow() {
     }
     if (automateProcess) {
       automateProcess.kill();
-    }
-  });
-}
-
-// File system handlers
-ipcMain.handle('search-pdf-file', async (event, filename) => {
-  try {
-    const userHome = require('os').homedir();
-    const searchPaths = [
-      path.join(userHome, 'Documents'),
-      path.join(userHome, 'Downloads'),
-      path.join(userHome, 'Desktop'),
-      userHome
-    ];
-
-    for (const searchPath of searchPaths) {
-      const result = await searchForPDF(searchPath, filename);
-      if (result.found) {
-        return result;
-      }
-    }
-
-    return { found: false, error: `File ${filename} not found in common locations` };
-  } catch (error) {
-    return { found: false, error: error.message };
-  }
-});
-
-ipcMain.handle('get-all-pdf-files', async () => {
-  try {
-    const userHome = require('os').homedir();
-    const searchPaths = [
-      path.join(userHome, 'Documents'),
-      path.join(userHome, 'Downloads'),
-      path.join(userHome, 'Desktop')
-    ];
-
-    const allFiles = [];
-    for (const searchPath of searchPaths) {
-      const files = await getAllPDFsInPath(searchPath);
-      allFiles.push(...files);
-    }
-
-    return allFiles;
-  } catch (error) {
-    console.error('Error getting PDF files:', error);
-    return [];
-  }
-});
-
-async function searchForPDF(dirPath, filename) {
-  return new Promise((resolve) => {
-    try {
-      if (!fs.existsSync(dirPath)) {
-        resolve({ found: false });
-        return;
-      }
-
-      const files = fs.readdirSync(dirPath, { withFileTypes: true });
-      
-      for (const file of files) {
-        const fullPath = path.join(dirPath, file.name);
-        
-        if (file.isFile() && file.name.toLowerCase().includes(filename.toLowerCase()) && 
-            path.extname(file.name).toLowerCase() === '.pdf') {
-          try {
-            const content = fs.readFileSync(fullPath);
-            const base64Content = 'data:application/pdf;base64,' + content.toString('base64');
-            resolve({ 
-              found: true, 
-              content: base64Content, 
-              fullPath: fullPath,
-              fileName: file.name 
-            });
-            return;
-          } catch (readError) {
-            resolve({ found: false, error: `Error reading file: ${readError.message}` });
-            return;
-          }
-        }
-      }
-
-      resolve({ found: false });
-    } catch (error) {
-      resolve({ found: false, error: error.message });
-    }
-  });
-}
-
-async function getAllPDFsInPath(dirPath) {
-  return new Promise((resolve) => {
-    try {
-      if (!fs.existsSync(dirPath)) {
-        resolve([]);
-        return;
-      }
-
-      const files = fs.readdirSync(dirPath, { withFileTypes: true });
-      const pdfFiles = files
-        .filter(file => file.isFile() && path.extname(file.name).toLowerCase() === '.pdf')
-        .map(file => path.join(dirPath, file.name));
-
-      resolve(pdfFiles);
-    } catch (error) {
-      resolve([]);
     }
   });
 }
@@ -178,9 +73,11 @@ function startPythonServer() {
 }
 
 function startAutomateScript() {
+  // In dev, run: python -m operate.main
+  // In prod, run: python (or bundled python) -m operate.main
   const pythonExecutable = isDev 
     ? 'python' 
-    : 'python';
+    : 'python'; // For production, ensure python is bundled or in PATH
   const args = ['-m', 'operate.main'];
   const cwd = isDev ? path.join(__dirname, '../os') : process.resourcesPath;
 
