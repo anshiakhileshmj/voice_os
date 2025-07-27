@@ -24,6 +24,7 @@ interface TranscriptEntry {
   timestamp: Date;
   confidence?: number;
 }
+
 const Index = () => {
   const { user, loading, signOut } = useAuth();
   const [isRecording, setIsRecording] = useState(false);
@@ -45,10 +46,10 @@ const Index = () => {
   const [uploading, setUploading] = useState(false);
   const [fabOpen, setFabOpen] = useState(false);
 
-  // Redirect to auth if not logged in and get user name
+  // Redirect to landing page if not logged in
   useEffect(() => {
     if (!loading && !user) {
-      window.location.href = '/auth';
+      window.location.href = '/';
     } else if (user) {
       // Get user profile to fetch name
       const getUserProfile = async () => {
@@ -474,6 +475,11 @@ const Index = () => {
     }
   };
 
+  const handleSignOut = async () => {
+    await signOut();
+    window.location.href = '/';
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 flex items-center justify-center">
@@ -611,8 +617,6 @@ const Index = () => {
             onClick={isRecording ? stopRecording : startRecording}
           />
         </div>
-
-      
 
         {/* Live Transcript */}
         {(currentTranscript || isRecording) && (
@@ -767,7 +771,7 @@ const Index = () => {
               </label>
               {/* Logout Button */}
               <button
-                onClick={signOut}
+                onClick={handleSignOut}
                 className="w-[60px] h-[60px] flex items-center justify-center p-1 rounded-full border border-red-500/20 bg-[#181818] shadow-lg hover:shadow-red-500/30 hover:scale-110 transition-all duration-300 group"
                 title="Logout"
               >
