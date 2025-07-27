@@ -1,5 +1,4 @@
 
-import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import styled from 'styled-components';
 
@@ -11,67 +10,24 @@ const Landing = () => {
   };
 
   return (
-    <div className="landing-container">
-      <div className="content">
-        <h1 className="main-title">Automate your Computer</h1>
-        <p className="subtitle">Your Computer. Just Smarter.</p>
-        <div className="button-wrapper">
-          <StyledWrapper>
-            <div className="button-container">
-              <div className="button" onClick={handleGetStarted}>
-                <span>Get Started</span>
-              </div>
+    <>
+      <style>
+        {`
+          @import url('https://fonts.googleapis.com/css?family=Caveat|Righteous&display=swap');
+        `}
+      </style>
+      <div className="landing-container">
+        <h1 className="landing-title">Automate your Computer</h1>
+        <p className="landing-subtitle">Your Computer. Just Smarter.</p>
+        <StyledWrapper>
+          <div className="button-container">
+            <div className="button" onClick={handleGetStarted}>
+              <span>Get Started</span>
             </div>
-          </StyledWrapper>
-        </div>
+          </div>
+        </StyledWrapper>
       </div>
-      <style jsx>{`
-        @import url('https://fonts.googleapis.com/css?family=Caveat|Righteous&display=swap');
-        
-        .landing-container {
-          background: black;
-          width: 100%;
-          height: 100vh;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          flex-direction: column;
-        }
-        
-        .content {
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          justify-content: center;
-        }
-        
-        .main-title {
-          font-family: 'Righteous', cursive;
-          background: url('https://media.giphy.com/media/FE0WTM8BG754I/giphy.gif') center center no-repeat;
-          -webkit-background-clip: text;
-          -webkit-text-fill-color: transparent;
-          font-size: 4.5rem;
-          letter-spacing: 10px;
-          background-size: cover;
-          margin: 0px;
-          color: transparent;
-        }
-        
-        .subtitle {
-          font-family: 'Caveat', cursive;
-          color: transparent;
-          font-size: 2rem;
-          letter-spacing: 5px;
-          margin: 20px 0;
-          background: linear-gradient(to right, #c4c4c4, #6a6a6a);
-          -webkit-background-clip: text;
-        }
-        
-        .button-wrapper {
-          margin-top: 30px;
-        }
-      `}</style>
-    </div>
+    </>
   );
 };
 
