@@ -85,121 +85,87 @@ export class ActionRouter {
     conversationHistory: ConversationMessage[],
     isAutomateEnabled: boolean
   ): Promise<IntentResult> {
-    // CRITICAL: Check for automation commands first when automation is enabled
-    if (isAutomateEnabled && this.looksLikeAutomationCommand(userInput)) {
-      console.log('[IntentDetection] Automation enabled and input looks like automation command, forcing automate_action');
-      return {
-        intent: 'automate_action',
-        confidence: 0.95,
-        params: { objective: userInput.trim() }
-      };
+    // CRITICAL: Force automation detection for obvious automation commands
+    if (isAutomateEnabled) {
+      const forcedAutomation = this.forceAutomationDetection(userInput);
+      if (forcedAutomation) {
+        console.log('[IntentDetection] FORCED automation detection:', forcedAutomation);
+        return forcedAutomation;
+      }
     }
 
     // Enhanced system prompt for better automation detection
-    const automateIntentText = isAutomateEnabled 
-      ? `
-CRITICAL: When automation is ENABLED, prioritize "automate_action" for ANY computer control command.
+    const systemPrompt = `You are an intent detection system. 
 
-- "automate_action": detect SPECIFIC computer automation commands like:
-  * Opening applications: "open notepad", "launch calculator", "start word", "open chrome", "run excel", "open google"
-  * File operations: "save file", "open file", "create new document", "close window"
-  * System actions: "take screenshot", "minimize window", "maximize window"
-  * Mouse/keyboard: "click button", "type text", "press enter", "move mouse"
-  * Any command that involves controlling the computer or operating system
+${isAutomateEnabled ? 'AUTOMATION IS ENABLED - PRIORITIZE AUTOMATION COMMANDS!' : 'AUTOMATION IS DISABLED'}
 
-AUTOMATION DETECTION RULES (WHEN AUTOMATION IS ENABLED):
-1. If user says "open [anything]", "launch [anything]", "start [anything]" → ALWAYS "automate_action"
-2. If user asks to do something on the computer → ALWAYS "automate_action"  
-3. DO NOT classify automation commands as "startup_greeting" or "conversation"
+CRITICAL RULE: When automation is ENABLED, ANY command that involves computer control MUST be classified as "automate_action".
 
-Examples that should ALWAYS be "automate_action" when automation is enabled:
-- "open notepad" → automate_action
-- "open google" → automate_action
-- "launch calculator" → automate_action
-- "start chrome" → automate_action
-- "open word" → automate_action
-`
-      : '- "conversation": all general conversation and questions since automation is disabled';
+Analyze the user input and respond with ONLY a JSON object:
+{
+  "intent": "one of the allowed intents",
+  "confidence": 0.0-1.0,
+  "params": {},
+  "response": "optional brief response"
+}
 
-    const systemPrompt = `You are an intent detection system with dual mode capability. 
+ALLOWED INTENTS:
+- "automate_action": ${isAutomateEnabled ? 'ANY computer control command (open apps, click, type, file operations, etc.)' : 'disabled'}
+- "connect_spotify": requests to connect/authorize Spotify
+- "play_song": play specific songs/artists on Spotify
+- "check_spotify_status": check Spotify connection status
+- "startup_greeting": ONLY app startup greetings like "hello", "hi", "good morning"
+- "location_query": asking about location, time, weather
+- "document_capabilities": asking about document processing abilities
+- "document_processing": process/analyze documents
+- "conversation": general chat (default when automation disabled)
 
-${isAutomateEnabled ? 'AUTOMATION IS CURRENTLY ENABLED - PRIORITIZE AUTOMATION COMMANDS!' : 'AUTOMATION IS DISABLED'}
+${isAutomateEnabled ? `
+AUTOMATION COMMANDS (MUST be "automate_action"):
+- "open [anything]" → automate_action
+- "launch [anything]" → automate_action  
+- "start [anything]" → automate_action
+- "run [anything]" → automate_action
+- Any system/app control → automate_action
 
-Analyze the user's input and respond with a JSON object containing:
-- intent: one of ["connect_spotify", "play_song", "check_spotify_status", "startup_greeting", "location_query", "document_capabilities", "document_processing", "automate_action", "conversation"]  
-- confidence: number between 0-1
-- params: object with extracted parameters
-- response: brief response if action needed
+EXAMPLES:
+- "open notepad" → {"intent": "automate_action", "confidence": 0.95, "params": {"objective": "open notepad"}}
+- "open google" → {"intent": "automate_action", "confidence": 0.95, "params": {"objective": "open google"}}
+- "launch calculator" → {"intent": "automate_action", "confidence": 0.95, "params": {"objective": "launch calculator"}}
+` : ''}
 
-Intent definitions:
-- "startup_greeting": ONLY for app startup, first interaction, or explicit greetings like "hello", "hi", "good morning" (NOT for automation commands)
-- "location_query": asking about city, region, country, time, weather, or location info
-- "document_capabilities": asking what can be done with documents or file processing
-- "document_processing": commands to summarize, extract, format documents, ask questions about files, or document-related requests
-- "play_song": extract artist and song from phrases like "play [song] by [artist]", "play [artist]", etc.
-- "connect_spotify": detect requests to connect/link/authorize Spotify
-- "check_spotify_status": detect requests about Spotify connection status
-${automateIntentText}
-- "conversation": general conversation and questions that are NOT automation commands
-
-For automation commands, extract the user's objective as 'objective' in params.
-
-Special note: If the input contains "(document: [id])", extract the document ID and include it in params.
-
-${isAutomateEnabled ? 'CRITICAL: When automation is enabled, commands like "open notepad", "open google", "launch calculator" are AUTOMATION COMMANDS, not greetings!' : ''}
-
-Respond ONLY with valid JSON.`;
+Respond with ONLY valid JSON, no markdown formatting.`;
 
     try {
       const { response } = await llmService.generateResponse(
         userInput,
         [
           { role: 'system', content: systemPrompt },
-          ...conversationHistory.slice(-2) // Keep minimal context for speed
+          ...conversationHistory.slice(-1) // Minimal context
         ]
       );
 
-      // Debug: Log the raw LLM response for intent detection
-      console.debug('[IntentDetection][RawLLMResponse]', response);
+      console.log('[IntentDetection][LLMResponse]', response);
 
-      // Try to parse JSON response - handle various formats
+      // Clean and parse JSON
       let cleanResponse = response.replace(/```json\n?|\n?```/g, '').trim();
       
-      // If response doesn't start with {, try to find JSON in the response
       if (!cleanResponse.startsWith('{')) {
-        const jsonMatch = cleanResponse.match(/\{.*\}/s);
+        const jsonMatch = cleanResponse.match(/\{[^}]*\}/s);
         if (jsonMatch) {
           cleanResponse = jsonMatch[0];
-        } else {
-          // If no JSON found and automation is enabled and looks like automation, force it
-          if (isAutomateEnabled && this.looksLikeAutomationCommand(userInput)) {
-            console.log('[IntentDetection] No JSON found but automation enabled and looks like automation, forcing automate_action');
-            return {
-              intent: 'automate_action',
-              confidence: 0.8,
-              params: { objective: userInput.trim() }
-            };
-          }
-          // Otherwise treat as conversation
-          return {
-            intent: 'conversation',
-            confidence: 0.8,
-            params: {}
-          };
         }
       }
       
       const intent = JSON.parse(cleanResponse);
       
-      // FINAL SAFETY CHECK: if automation is enabled and input looks like automation but was classified as something else, override it
-      if (isAutomateEnabled && this.looksLikeAutomationCommand(userInput) && intent.intent !== 'automate_action') {
-        console.log(`[IntentDetection] Overriding intent from "${intent.intent}" to "automate_action" because automation is enabled and input looks like automation`);
-        return {
-          intent: 'automate_action',
-          confidence: 0.9,
-          params: { objective: userInput.trim() },
-          response: intent.response
-        };
+      // FINAL OVERRIDE: If automation enabled and looks like automation, force it
+      if (isAutomateEnabled && intent.intent !== 'automate_action') {
+        const automationOverride = this.forceAutomationDetection(userInput);
+        if (automationOverride) {
+          console.log(`[IntentDetection] OVERRIDING "${intent.intent}" to "automate_action"`);
+          return automationOverride;
+        }
       }
       
       return {
@@ -209,16 +175,15 @@ Respond ONLY with valid JSON.`;
         response: intent.response
       };
     } catch (error) {
-      console.error('Intent detection error:', error);
+      console.error('[IntentDetection] Error:', error);
       
-      // Fallback: if automation is enabled and looks like automation, default to automation
-      if (isAutomateEnabled && this.looksLikeAutomationCommand(userInput)) {
-        console.log('[IntentDetection] Error occurred but automation enabled and looks like automation, defaulting to automate_action');
-        return {
-          intent: 'automate_action',
-          confidence: 0.7,
-          params: { objective: userInput.trim() }
-        };
+      // Emergency fallback for automation
+      if (isAutomateEnabled) {
+        const automationFallback = this.forceAutomationDetection(userInput);
+        if (automationFallback) {
+          console.log('[IntentDetection] ERROR FALLBACK to automation');
+          return automationFallback;
+        }
       }
       
       return {
@@ -229,30 +194,58 @@ Respond ONLY with valid JSON.`;
     }
   }
 
-  private looksLikeAutomationCommand(input: string): boolean {
-    const automationKeywords = [
-      'open', 'launch', 'start', 'run', 'execute',
-      'click', 'type', 'press', 'save', 'close',
-      'minimize', 'maximize', 'screenshot', 'capture',
-      'notepad', 'calculator', 'chrome', 'word', 'excel', 'google'
-    ];
-    
+  private forceAutomationDetection(input: string): IntentResult | null {
     const lowerInput = input.toLowerCase().trim();
     
-    // Check for patterns like "open X", "launch X", "start X"
+    // Definitive automation patterns
     const automationPatterns = [
-      /^(open|launch|start|run)\s+\w+/i,
+      /^(open|launch|start|run|execute)\s+/i,
       /^(click|type|press)\s+/i,
-      /^(take|capture)\s+(screenshot|screen)/i
+      /^(take|capture)\s+(screenshot|screen)/i,
+      /^(save|close|minimize|maximize)\s+/i
     ];
     
-    // Check patterns first
-    if (automationPatterns.some(pattern => pattern.test(lowerInput))) {
-      return true;
+    // Check patterns
+    for (const pattern of automationPatterns) {
+      if (pattern.test(lowerInput)) {
+        return {
+          intent: 'automate_action',
+          confidence: 0.98,
+          params: { objective: input.trim() }
+        };
+      }
     }
     
-    // Check keywords
-    return automationKeywords.some(keyword => lowerInput.includes(keyword));
+    // Check for specific automation keywords
+    const automationKeywords = [
+      'notepad', 'calculator', 'chrome', 'firefox', 'word', 'excel', 
+      'powerpoint', 'google', 'browser', 'file explorer', 'cmd', 'terminal'
+    ];
+    
+    // If input contains automation keywords with action verbs
+    const hasActionVerb = /\b(open|launch|start|run|execute|click|type|press)\b/i.test(lowerInput);
+    const hasAutomationKeyword = automationKeywords.some(keyword => 
+      lowerInput.includes(keyword)
+    );
+    
+    if (hasActionVerb && hasAutomationKeyword) {
+      return {
+        intent: 'automate_action',
+        confidence: 0.95,
+        params: { objective: input.trim() }
+      };
+    }
+    
+    // Direct app name mentions with "open" intent
+    if (lowerInput.includes('open') && automationKeywords.some(keyword => lowerInput.includes(keyword))) {
+      return {
+        intent: 'automate_action',
+        confidence: 0.9,
+        params: { objective: input.trim() }
+      };
+    }
+    
+    return null;
   }
 
   private async handleAutomateAction(params?: Record<string, any>): Promise<ActionResult> {
