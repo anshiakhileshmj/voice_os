@@ -7,14 +7,22 @@ echo    MJAK Automation Complete Build
 echo ========================================
 
 echo.
-echo [1/6] Cleaning previous builds...
+echo [1/7] Cleaning previous builds...
 if exist dist rmdir /s /q dist 2>nul
 if exist dist-electron rmdir /s /q dist-electron 2>nul
 if exist os\dist rmdir /s /q os\dist 2>nul
+
+REM Clean up duplicate electron files
+echo Cleaning electron folder...
+cd electron
+if exist main.js del main.js 2>nul
+if exist preload.js del preload.js 2>nul
+cd ..
+
 echo ✓ Cleanup complete
 
 echo.
-echo [2/6] Installing Node.js dependencies...
+echo [2/7] Installing Node.js dependencies...
 call npm install
 if !errorlevel! neq 0 (
     echo ✗ Node.js dependencies installation failed!
@@ -24,7 +32,7 @@ if !errorlevel! neq 0 (
 echo ✓ Node.js dependencies installed
 
 echo.
-echo [3/6] Building React application...
+echo [3/7] Building React application...
 call npm run build
 if !errorlevel! neq 0 (
     echo ✗ React build failed!
@@ -34,7 +42,7 @@ if !errorlevel! neq 0 (
 echo ✓ React build complete
 
 echo.
-echo [4/6] Building Python backend...
+echo [4/7] Building Python backend...
 cd os
 pip install pyinstaller fastapi uvicorn pydantic
 if !errorlevel! neq 0 (
@@ -56,7 +64,7 @@ cd ..
 echo ✓ Python backend built
 
 echo.
-echo [5/6] Installing Electron dependencies...
+echo [5/7] Installing Electron dependencies...
 call npm install electron electron-builder --save-dev
 if !errorlevel! neq 0 (
     echo ✗ Electron installation failed!
@@ -66,7 +74,21 @@ if !errorlevel! neq 0 (
 echo ✓ Electron dependencies installed
 
 echo.
-echo [6/6] Building Electron application...
+echo [6/7] Verifying Electron files...
+if not exist "electron\main.cjs" (
+    echo ✗ electron\main.cjs not found!
+    pause
+    exit /b 1
+)
+if not exist "electron\preload.cjs" (
+    echo ✗ electron\preload.cjs not found!
+    pause
+    exit /b 1
+)
+echo ✓ Electron files verified
+
+echo.
+echo [7/7] Building Electron application...
 call npx electron-builder --win
 if !errorlevel! neq 0 (
     echo ✗ Electron build failed!
