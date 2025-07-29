@@ -7,6 +7,9 @@
     "dev": "vite",
     "build": "vite build",
     "build:dev": "vite build --mode development",
+    "build:prod": "vite build --mode production",
+    "electron:dev": "electron electron/main.cjs",
+    "electron:build": "npm run build:prod && electron-builder",
     "lint": "eslint .",
     "preview": "vite preview"
   },
