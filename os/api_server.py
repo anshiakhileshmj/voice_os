@@ -112,22 +112,39 @@ async def generate_actions(request: GenerateActionsRequest):
         
         # Use the existing get_next_action function to generate actions
         logger.info("Calling get_next_action to generate automation steps...")
-        operations, session_id = await get_next_action("gemini-1.5-flash", messages, request.objective, None)
         
-        if not operations:
-            logger.warning("No operations generated for the given objective")
+        try:
+            operations, session_id = await get_next_action("gemini-1.5-flash", messages, request.objective, None)
+            
+            if not operations:
+                logger.warning("No operations generated for the given objective")
+                return GenerateActionsResponse(
+                    success=False,
+                    actions=[],
+                    error="Could not generate automation steps. This might be due to API timeout or the request being too complex. Please try again with a simpler command."
+                )
+            
+            logger.info(f"Successfully generated {len(operations)} actions")
+            return GenerateActionsResponse(
+                success=True,
+                actions=operations,
+                message=f"Generated {len(operations)} automation actions"
+            )
+            
+        except asyncio.TimeoutError:
+            logger.error("Timeout while generating actions")
             return GenerateActionsResponse(
                 success=False,
                 actions=[],
-                error="No actions could be generated for this objective"
+                error="Request timed out while generating automation steps. Please try again."
             )
-        
-        logger.info(f"Successfully generated {len(operations)} actions")
-        return GenerateActionsResponse(
-            success=True,
-            actions=operations,
-            message=f"Generated {len(operations)} automation actions"
-        )
+        except Exception as api_error:
+            logger.error(f"Error in get_next_action: {str(api_error)}")
+            return GenerateActionsResponse(
+                success=False,
+                actions=[],
+                error=f"Failed to generate automation steps: {str(api_error)}"
+            )
         
     except Exception as e:
         logger.error(f"Error generating actions: {str(e)}", exc_info=True)
