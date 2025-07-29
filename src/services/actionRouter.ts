@@ -85,20 +85,39 @@ export class ActionRouter {
     conversationHistory: ConversationMessage[],
     isAutomateEnabled: boolean
   ): Promise<IntentResult> {
-    // Enhanced system prompt for dual mode detection
+    // Enhanced system prompt for better automation detection
     const automateIntentText = isAutomateEnabled 
       ? `
-- "automate_action": detect clear automation requests like "open google", "open notepad", "launch calculator", "start word", "take a screenshot", "close window", "type text", "move mouse", "click button", "open file", "save document", etc. These should be SPECIFIC computer actions.
-- "conversation": detect general conversation, questions, casual talk, requests for information, discussions that are NOT specific computer automation commands.
+- "automate_action": detect SPECIFIC computer automation commands like:
+  * Opening applications: "open notepad", "launch calculator", "start word", "open chrome", "run excel"
+  * File operations: "save file", "open file", "create new document", "close window"
+  * System actions: "take screenshot", "minimize window", "maximize window"
+  * Mouse/keyboard: "click button", "type text", "press enter", "move mouse"
+  * Any command that involves controlling the computer or operating system
 
-IMPORTANT: When automation is enabled, you must distinguish between:
-1. AUTOMATION commands: Clear, specific computer actions (open apps, click things, type text, etc.)
-2. CONVERSATION: General chat, questions, information requests, casual talk
+- "conversation": detect general conversation, questions, casual talk, requests for information that are NOT specific computer automation commands.
 
-Examples of AUTOMATION: "open notepad", "click the start button", "type hello world", "launch chrome", "take screenshot"
-Examples of CONVERSATION: "how are you", "what's the weather", "tell me about AI", "what can you do", "I'm feeling sad"
+CRITICAL RULES FOR AUTOMATION DETECTION:
+1. If the user says commands like "open [app name]", "launch [app]", "start [program]" - this is ALWAYS "automate_action"
+2. If the user asks to do something on the computer (click, type, save, etc.) - this is ALWAYS "automate_action"
+3. Only classify as "conversation" if it's clearly a question or chat that doesn't involve computer control
+
+Examples of AUTOMATION (always classify as automate_action):
+- "open notepad" → automate_action
+- "launch calculator" → automate_action
+- "start chrome" → automate_action
+- "take a screenshot" → automate_action
+- "click the start button" → automate_action
+- "type hello world" → automate_action
+- "save this document" → automate_action
+
+Examples of CONVERSATION (classify as conversation):
+- "how are you" → conversation
+- "what's the weather" → conversation
+- "tell me about AI" → conversation
+- "what can you do" → conversation
 `
-      : ', "conversation": all general conversation and questions since automation is disabled';
+      : '- "conversation": all general conversation and questions since automation is disabled';
 
     const systemPrompt = `You are an intent detection system with dual mode capability. Analyze the user's input and respond with a JSON object containing:
 - intent: one of ["connect_spotify", "play_song", "check_spotify_status", "startup_greeting", "location_query", "document_capabilities", "document_processing", "automate_action", "conversation"]  
@@ -107,7 +126,7 @@ Examples of CONVERSATION: "how are you", "what's the weather", "tell me about AI
 - response: brief response if action needed
 
 Intent definitions:
-- "startup_greeting": app startup or first interaction
+- "startup_greeting": ONLY for app startup, first interaction, or explicit greetings like "hello", "hi", "good morning"
 - "location_query": asking about city, region, country, time, weather, or location info
 - "document_capabilities": asking what can be done with documents or file processing
 - "document_processing": commands to summarize, extract, format documents, ask questions about files, or document-related requests
@@ -119,7 +138,7 @@ For automation commands, extract the user's objective as 'objective' in params.
 
 Special note: If the input contains "(document: [id])", extract the document ID and include it in params.
 
-CRITICAL: Be precise in distinguishing automation vs conversation when automation is enabled. Only classify as "automate_action" if it's a clear computer automation command.
+CRITICAL: When automation is enabled, prioritize "automate_action" for ANY computer control command over other intents.
 
 Respond ONLY with valid JSON.`;
 
@@ -155,6 +174,16 @@ Respond ONLY with valid JSON.`;
       
       const intent = JSON.parse(cleanResponse);
       
+      // Additional safety check: if automation is enabled and input looks like automation, force it
+      if (isAutomateEnabled && this.looksLikeAutomationCommand(userInput)) {
+        return {
+          intent: 'automate_action',
+          confidence: 0.9,
+          params: { objective: userInput },
+          response: intent.response
+        };
+      }
+      
       return {
         intent: intent.intent || 'conversation',
         confidence: intent.confidence || 0.5,
@@ -163,12 +192,34 @@ Respond ONLY with valid JSON.`;
       };
     } catch (error) {
       console.error('Intent detection error:', error);
+      
+      // Fallback: if automation is enabled and looks like automation, default to automation
+      if (isAutomateEnabled && this.looksLikeAutomationCommand(userInput)) {
+        return {
+          intent: 'automate_action',
+          confidence: 0.7,
+          params: { objective: userInput }
+        };
+      }
+      
       return {
         intent: 'conversation',
         confidence: 0.3,
         params: {}
       };
     }
+  }
+
+  private looksLikeAutomationCommand(input: string): boolean {
+    const automationKeywords = [
+      'open', 'launch', 'start', 'run', 'execute',
+      'click', 'type', 'press', 'save', 'close',
+      'minimize', 'maximize', 'screenshot', 'capture',
+      'notepad', 'calculator', 'chrome', 'word', 'excel'
+    ];
+    
+    const lowerInput = input.toLowerCase();
+    return automationKeywords.some(keyword => lowerInput.includes(keyword));
   }
 
   private async handleAutomateAction(params?: Record<string, any>): Promise<ActionResult> {

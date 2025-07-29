@@ -44,6 +44,7 @@ class AutomateRequest(BaseModel):
 
 class GenerateActionsRequest(BaseModel):
     objective: str
+    apiKey: Optional[str] = None  # Optional API key from frontend (not used now)
 
 class AutomateResponse(BaseModel):
     success: bool
@@ -60,7 +61,29 @@ class GenerateActionsResponse(BaseModel):
 @app.get("/health")
 async def health_check():
     """Health check endpoint"""
-    return {"status": "healthy", "service": "MJAK Automation API"}
+    try:
+        # Test configuration to ensure API key is available
+        is_valid = config.validation()
+        if is_valid:
+            return {
+                "status": "healthy", 
+                "service": "MJAK Automation API",
+                "api_key_status": "configured"
+            }
+        else:
+            return {
+                "status": "unhealthy", 
+                "service": "MJAK Automation API",
+                "api_key_status": "missing",
+                "error": "No API key configured"
+            }
+    except Exception as e:
+        logger.error(f"Health check failed: {e}")
+        return {
+            "status": "unhealthy",
+            "service": "MJAK Automation API", 
+            "error": str(e)
+        }
 
 @app.post("/generate-actions", response_model=GenerateActionsResponse)
 async def generate_actions(request: GenerateActionsRequest):
@@ -68,8 +91,14 @@ async def generate_actions(request: GenerateActionsRequest):
     try:
         logger.info(f"Generating actions for objective: {request.objective}")
         
-        # Validate config
-        config.validation()
+        # Validate config (this will fetch API key from Supabase)
+        if not config.validation():
+            logger.error("Configuration validation failed")
+            return GenerateActionsResponse(
+                success=False,
+                actions=[],
+                error="API configuration invalid - could not retrieve API key"
+            )
         
         # Create system message for action generation
         system_message = {"role": "system", "content": f"Generate automation actions for: {request.objective}"}
@@ -79,13 +108,14 @@ async def generate_actions(request: GenerateActionsRequest):
         operations, session_id = await get_next_action("gemini-1.5-flash", messages, request.objective, None)
         
         if not operations:
+            logger.warning("No operations generated")
             return GenerateActionsResponse(
                 success=False,
                 actions=[],
                 error="No actions could be generated for this objective"
             )
         
-        logger.info(f"Generated {len(operations)} actions")
+        logger.info(f"Generated {len(operations)} actions successfully")
         return GenerateActionsResponse(
             success=True,
             actions=operations,
@@ -168,13 +198,20 @@ async def execute_automation(request: AutomateRequest):
 async def get_status():
     """Get the current status of the automation service"""
     try:
-        # Check if config is valid
-        config.validation()
-        return {
-            "status": "ready",
-            "model": "gemini-1.5-flash",
-            "message": "Automation service is ready to accept commands"
-        }
+        # Check if config is valid (this will try Supabase first)
+        is_valid = config.validation()
+        if is_valid:
+            return {
+                "status": "ready",
+                "model": "gemini-1.5-flash",
+                "message": "Automation service is ready to accept commands",
+                "api_key_source": "supabase"
+            }
+        else:
+            return {
+                "status": "error",
+                "message": "Configuration error: Could not retrieve API key from Supabase or local environment"
+            }
     except Exception as e:
         return {
             "status": "error",

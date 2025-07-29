@@ -25,44 +25,71 @@ class Config:
             response = requests.get('https://uasluhbtcpuigwkuslum.supabase.co/functions/v1/get-gemini-key')
             if response.status_code == 200:
                 data = response.json()
-                return data.get('apiKey')
+                api_key = data.get('apiKey')
+                if api_key:
+                    print(f"[Config] Successfully retrieved API key from Supabase")
+                    return api_key
+                else:
+                    print(f"[Config] No API key found in Supabase response")
+                    return None
             else:
-                print(f"Failed to get API key from backend: {response.status_code}")
+                print(f"[Config] Failed to get API key from Supabase: {response.status_code}")
                 return None
         except Exception as e:
-            print(f"Error getting API key from backend: {e}")
+            print(f"[Config] Error getting API key from Supabase: {e}")
             return None
 
     def initialize_google(self):
-        # First try to get API key from Supabase
+        # Always try to get API key from Supabase first
         api_key = self.get_api_key_from_supabase()
         
-        # Fallback to local environment or user input
+        # Fallback to local environment only if Supabase fails
         if not api_key:
+            print("[Config] Supabase API key fetch failed, trying local environment...")
             if self.google_api_key:
                 api_key = self.google_api_key
             else:
                 api_key = os.getenv("GOOGLE_API_KEY")
         
         if not api_key:
-            print("No API key found. Please ensure the backend is configured with GEMINI_API_KEY.")
+            print("[Config] ERROR: No API key found. Please ensure GEMINI_API_KEY is configured in Supabase.")
             return None
             
-        genai.configure(api_key=api_key, transport="rest")
-        model = genai.GenerativeModel("gemini-1.5-flash")
-        return model
+        try:
+            genai.configure(api_key=api_key, transport="rest")
+            model = genai.GenerativeModel("gemini-1.5-flash")
+            print("[Config] Google Gemini model initialized successfully")
+            return model
+        except Exception as e:
+            print(f"[Config] Error initializing Gemini model: {e}")
+            return None
 
     def validation(self):
-        # Updated validation - try backend first, then fallback
+        # Updated validation - prioritize Supabase backend
+        print("[Config] Validating configuration...")
         api_key = self.get_api_key_from_supabase()
-        if not api_key:
-            print("Warning: Could not get API key from backend, will try local configuration...")
-            self.require_api_key("GOOGLE_API_KEY", "Google API key", True)
+        if api_key:
+            print("[Config] Configuration valid - API key retrieved from Supabase")
+            return True
+        else:
+            print("[Config] Warning: Could not get API key from Supabase")
+            # Check local environment as fallback
+            local_key = os.getenv("GOOGLE_API_KEY")
+            if local_key:
+                print("[Config] Found local GOOGLE_API_KEY as fallback")
+                return True
+            else:
+                print("[Config] ERROR: No API key found in Supabase or local environment")
+                return False
 
     def require_api_key(self, key_name, key_description, is_required):
         key_exists = bool(os.environ.get(key_name))
         if is_required and not key_exists:
-            self.prompt_and_save_api_key(key_name, key_description)
+            # Only prompt for local key if Supabase also failed
+            supabase_key = self.get_api_key_from_supabase()
+            if not supabase_key:
+                print(f"[Config] Prompting for {key_description} as both Supabase and local sources failed")
+                self.prompt_and_save_api_key(key_name, key_description)
 
     def prompt_and_save_api_key(self, key_name, key_description):
         key_value = input_dialog(
