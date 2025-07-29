@@ -37,7 +37,7 @@ export class ActionRouter {
     // Route based on intent - now with dual mode support
     switch (intent.intent) {
       case 'automate_action':
-        actionResult = await this.handleAutomateAction(intent.params);
+        actionResult = await this.handleAutomateAction(intent.params, userInput);
         break;
         
       case 'connect_spotify':
@@ -261,7 +261,7 @@ Respond with ONLY valid JSON, no markdown formatting.`;
     return null;
   }
 
-  private async handleAutomateAction(params?: Record<string, any>): Promise<ActionResult> {
+  private async handleAutomateAction(params?: Record<string, any>, originalUserInput?: string): Promise<ActionResult> {
     try {
       if (!automateService.isServiceConnected()) {
         const isConnected = await automateService.checkConnection();
@@ -274,7 +274,8 @@ Respond with ONLY valid JSON, no markdown formatting.`;
         }
       }
 
-      const objective = params?.objective;
+      // Use the objective from params, or fall back to the original user input
+      const objective = params?.objective || originalUserInput;
       if (!objective) {
         return {
           success: false,
