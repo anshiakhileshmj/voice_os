@@ -17,13 +17,7 @@ function createWindow() {
       contextIsolation: true,
       preload: path.join(__dirname, 'preload.js')
     },
-    icon: path.join(__dirname, '../public/o.png'),
-    show: false
-  });
-
-  // Show window when ready to prevent visual flash
-  mainWindow.once('ready-to-show', () => {
-    mainWindow.show();
+    icon: path.join(__dirname, '../public/favicon.ico')
   });
 
   // Start Python API server
@@ -36,9 +30,7 @@ function createWindow() {
     mainWindow.loadURL('http://localhost:5173');
     mainWindow.webContents.openDevTools();
   } else {
-    const indexPath = path.join(__dirname, '../dist/index.html');
-    console.log('Loading index.html from:', indexPath);
-    mainWindow.loadFile(indexPath);
+    mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
   }
 
   mainWindow.on('closed', () => {
@@ -53,82 +45,60 @@ function createWindow() {
 }
 
 function startPythonServer() {
-  try {
-    const pythonExecutable = isDev 
-      ? 'python' 
-      : path.join(process.resourcesPath, 'python-dist', 'api_server.exe');
-    
-    const scriptPath = isDev 
-      ? path.join(__dirname, '../os/api_server.py')
-      : path.join(process.resourcesPath, 'python-dist', 'api_server.exe');
+  const pythonExecutable = isDev 
+    ? 'python' 
+    : path.join(process.resourcesPath, 'python-dist', 'api_server.exe');
+  
+  const scriptPath = isDev 
+    ? path.join(__dirname, '../os/api_server.py')
+    : path.join(process.resourcesPath, 'python-dist', 'api_server.exe');
 
-    console.log('Starting Python server:', scriptPath);
-    console.log('Python executable:', pythonExecutable);
+  console.log('Starting Python server:', scriptPath);
 
-    pythonProcess = spawn(pythonExecutable, isDev ? [scriptPath] : [], {
-      cwd: isDev ? path.join(__dirname, '../os') : process.resourcesPath,
-      stdio: ['pipe', 'pipe', 'pipe']
-    });
+  pythonProcess = spawn(pythonExecutable, isDev ? [scriptPath] : [], {
+    cwd: isDev ? path.join(__dirname, '../os') : process.resourcesPath
+  });
 
-    pythonProcess.stdout.on('data', (data) => {
-      console.log(`Python: ${data}`);
-    });
+  pythonProcess.stdout.on('data', (data) => {
+    console.log(`Python: ${data}`);
+  });
 
-    pythonProcess.stderr.on('data', (data) => {
-      console.error(`Python Error: ${data}`);
-    });
+  pythonProcess.stderr.on('data', (data) => {
+    console.error(`Python Error: ${data}`);
+  });
 
-    pythonProcess.on('close', (code) => {
-      console.log(`Python process exited with code ${code}`);
-    });
-
-    pythonProcess.on('error', (err) => {
-      console.error('Failed to start Python process:', err);
-    });
-  } catch (error) {
-    console.error('Error starting Python server:', error);
-  }
+  pythonProcess.on('close', (code) => {
+    console.log(`Python process exited with code ${code}`);
+  });
 }
 
 function startAutomateScript() {
-  try {
-    const pythonExecutable = isDev 
-      ? 'python' 
-      : 'python';
-    const args = ['-m', 'operate.main'];
-    const cwd = isDev ? path.join(__dirname, '../os') : process.resourcesPath;
+  // In dev, run: python -m operate.main
+  // In prod, run: python (or bundled python) -m operate.main
+  const pythonExecutable = isDev 
+    ? 'python' 
+    : 'python'; // For production, ensure python is bundled or in PATH
+  const args = ['-m', 'operate.main'];
+  const cwd = isDev ? path.join(__dirname, '../os') : process.resourcesPath;
 
-    console.log('Starting Automate Script:', pythonExecutable, args.join(' '));
-    console.log('Working directory:', cwd);
+  console.log('Starting Automate Script:', pythonExecutable, args.join(' '));
 
-    automateProcess = spawn(pythonExecutable, args, { 
-      cwd,
-      stdio: ['pipe', 'pipe', 'pipe']
-    });
+  automateProcess = spawn(pythonExecutable, args, { cwd });
 
-    automateProcess.stdout && automateProcess.stdout.on('data', (data) => {
-      console.log(`Automate: ${data}`);
-    });
+  automateProcess.stdout && automateProcess.stdout.on('data', (data) => {
+    console.log(`Automate: ${data}`);
+  });
 
-    automateProcess.stderr && automateProcess.stderr.on('data', (data) => {
-      console.error(`Automate Error: ${data}`);
-    });
+  automateProcess.stderr && automateProcess.stderr.on('data', (data) => {
+    console.error(`Automate Error: ${data}`);
+  });
 
-    automateProcess.on('close', (code) => {
-      console.log(`Automate process exited with code ${code}`);
-    });
-
-    automateProcess.on('error', (err) => {
-      console.error('Failed to start Automate process:', err);
-    });
-  } catch (error) {
-    console.error('Error starting Automate script:', error);
-  }
+  automateProcess.on('close', (code) => {
+    console.log(`Automate process exited with code ${code}`);
+  });
 }
 
-app.whenReady().then(() => {
-  createWindow();
-});
+app.whenReady().then(createWindow);
 
 app.on('window-all-closed', () => {
   if (pythonProcess) {
@@ -143,17 +113,7 @@ app.on('window-all-closed', () => {
 });
 
 app.on('activate', () => {
-  if (BrowserWindow.getAllWindows().length === 0) {
+  if (mainWindow === null) {
     createWindow();
-  }
-});
-
-// Handle app quit
-app.on('before-quit', () => {
-  if (pythonProcess) {
-    pythonProcess.kill();
-  }
-  if (automateProcess) {
-    automateProcess.kill();
   }
 });
