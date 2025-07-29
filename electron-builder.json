@@ -10,14 +10,7 @@
     "electron/**/*",
     "!os/**/*",
     "!src/**/*",
-    "!public/**/*",
-    "!node_modules/**/*"
-  ],
-  "extraFiles": [
-    {
-      "from": "public/o.png",
-      "to": "public/o.png"
-    }
+    "!public/**/*"
   ],
   "extraResources": [
     {
@@ -27,20 +20,12 @@
   ],
   "win": {
     "target": "nsis",
-    "icon": "public/o.png"
+    "icon": "public/favicon.ico"
   },
   "nsis": {
     "oneClick": false,
     "allowToChangeInstallationDirectory": true,
     "createDesktopShortcut": true,
-    "createStartMenuShortcut": true,
-    "installerIcon": "public/o.png",
-    "uninstallerIcon": "public/o.png"
-  },
-  "mac": {
-    "icon": "public/o.png"
-  },
-  "linux": {
-    "icon": "public/o.png"
+    "createStartMenuShortcut": true
   }
 }

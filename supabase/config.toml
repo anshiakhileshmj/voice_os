@@ -1,4 +1,3 @@
-
 project_id = "uasluhbtcpuigwkuslum"
 
 [auth.external.spotify]
@@ -11,7 +10,4 @@ redirect_uri = ""
 verify_jwt = false
 
 [functions.process-document]
-verify_jwt = false
-
-[functions.get-gemini-key]
 verify_jwt = false
