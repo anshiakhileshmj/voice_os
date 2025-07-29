@@ -8,24 +8,47 @@
   "files": [
     "dist/**/*",
     "electron/**/*",
+    "!electron/*.js",
     "!os/**/*",
     "!src/**/*",
-    "!public/**/*"
+    "!public/**/*",
+    "!node_modules/**/*"
+  ],
+  "extraFiles": [
+    {
+      "from": "electron/main.cjs",
+      "to": "electron/main.cjs"
+    },
+    {
+      "from": "electron/preload.cjs",
+      "to": "electron/preload.cjs"
+    }
   ],
   "extraResources": [
     {
       "from": "os/dist/api_server.exe",
-      "to": "python-dist/api_server.exe"
+      "to": "python-dist/api_server.exe",
+      "filter": ["**/*"]
     }
   ],
   "win": {
     "target": "nsis",
     "icon": "public/favicon.ico"
   },
+  "mac": {
+    "target": "dmg",
+    "icon": "public/favicon.ico"
+  },
+  "linux": {
+    "target": "AppImage",
+    "icon": "public/favicon.ico"
+  },
   "nsis": {
     "oneClick": false,
     "allowToChangeInstallationDirectory": true,
     "createDesktopShortcut": true,
-    "createStartMenuShortcut": true
+    "createStartMenuShortcut": true,
+    "installerIcon": "public/favicon.ico",
+    "uninstallerIcon": "public/favicon.ico"
   }
 }
