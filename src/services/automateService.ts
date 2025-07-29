@@ -76,12 +76,29 @@ export class AutomateService {
 
   async generateActions(objective: string): Promise<AutomateAction[]> {
     try {
+      // Get Gemini API key from Supabase backend
+      const apiKeyResponse = await fetch('https://uasluhbtcpuigwkuslum.supabase.co/functions/v1/get-gemini-key', {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!apiKeyResponse.ok) {
+        throw new Error('Failed to get API key from backend');
+      }
+
+      const { apiKey } = await apiKeyResponse.json();
+
       const response = await fetch(`${this.baseUrl}/generate-actions`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ objective }),
+        body: JSON.stringify({ 
+          objective,
+          apiKey // Send API key to Python backend
+        }),
       });
 
       if (!response.ok) {
