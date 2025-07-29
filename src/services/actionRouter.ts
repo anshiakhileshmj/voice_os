@@ -90,7 +90,7 @@ export class ActionRouter {
     
     console.log(`[IntentDetection] Processing: "${userInput}", Automation enabled: ${isAutomateEnabled}`);
     
-    // CRITICAL: Force automation detection for obvious automation commands
+    // CRITICAL: Force automation detection for obvious automation commands ONLY if automation is enabled
     if (isAutomateEnabled) {
       const forcedAutomation = this.forceAutomationDetection(userInput);
       if (forcedAutomation) {
@@ -105,12 +105,18 @@ export class ActionRouter {
     // Enhanced system prompt for better automation detection
     const systemPrompt = `You are an intent detection system that must be EXTREMELY STRICT about automation classification.
 
-${isAutomateEnabled ? 'AUTOMATION IS ENABLED - YOU MUST PRIORITIZE AUTOMATION COMMANDS!' : 'AUTOMATION IS DISABLED'}
+AUTOMATION STATUS: ${isAutomateEnabled ? 'ENABLED - You can classify automation commands' : 'DISABLED - You MUST NOT classify any commands as automation'}
 
 CRITICAL RULES:
+${isAutomateEnabled ? `
 1. When automation is ENABLED, ANY command involving computer control MUST be "automate_action"
 2. Commands like "open X", "launch X", "start X" are ALWAYS automation when automation is enabled
 3. Only classify as "startup_greeting" for generic greetings like "hello", "hi", "good morning" WITHOUT any action requests
+` : `
+1. AUTOMATION IS DISABLED - You MUST NOT classify ANY commands as "automate_action"
+2. All computer control commands should be classified as "conversation" 
+3. Respond helpfully explaining that automation is currently disabled
+`}
 
 Analyze the user input and respond with ONLY a JSON object:
 {
@@ -121,7 +127,11 @@ Analyze the user input and respond with ONLY a JSON object:
 }
 
 ALLOWED INTENTS:
-- "automate_action": ${isAutomateEnabled ? 'ANY computer control command (open, launch, start, click, type, file operations, etc.)' : 'disabled'}
+${isAutomateEnabled ? `
+- "automate_action": ANY computer control command (open, launch, start, click, type, file operations, etc.)
+` : `
+- "automate_action": DISABLED - do not use this intent
+`}
 - "connect_spotify": requests to connect/authorize Spotify
 - "play_song": play specific songs/artists on Spotify
 - "check_spotify_status": check Spotify connection status
@@ -129,7 +139,7 @@ ALLOWED INTENTS:
 - "location_query": asking about location, time, weather
 - "document_capabilities": asking about document processing abilities
 - "document_processing": process/analyze documents
-- "conversation": general chat (default when automation disabled)
+- "conversation": general chat${!isAutomateEnabled ? ' (use this for automation commands when automation is disabled)' : ''}
 
 ${isAutomateEnabled ? `
 AUTOMATION EXAMPLES (MUST be "automate_action"):
@@ -137,12 +147,16 @@ AUTOMATION EXAMPLES (MUST be "automate_action"):
 - "open google" → {"intent": "automate_action", "confidence": 0.98, "params": {"objective": "open google"}}
 - "launch calculator" → {"intent": "automate_action", "confidence": 0.98, "params": {"objective": "launch calculator"}}
 - "start chrome" → {"intent": "automate_action", "confidence": 0.98, "params": {"objective": "start chrome"}}
+` : `
+AUTOMATION DISABLED EXAMPLES (MUST be "conversation"):
+- "open notepad" → {"intent": "conversation", "confidence": 0.9, "response": "Automation is currently disabled. Please enable automation to use computer control commands."}
+- "launch calculator" → {"intent": "conversation", "confidence": 0.9, "response": "Automation is currently disabled. Please enable automation to use computer control commands."}
+`}
 
 NON-AUTOMATION EXAMPLES:
 - "hello" → {"intent": "startup_greeting", "confidence": 0.9}
 - "good morning" → {"intent": "startup_greeting", "confidence": 0.9}
 - "how are you" → {"intent": "conversation", "confidence": 0.8}
-` : ''}
 
 User input: "${userInput}"
 
@@ -170,7 +184,18 @@ Respond with ONLY valid JSON, no markdown formatting.`;
       
       console.log('[IntentDetection][ParsedIntent]', intent);
       
-      // FINAL OVERRIDE: If automation enabled and looks like automation, force it
+      // FINAL OVERRIDE: If automation disabled and LLM classified as automation, force to conversation
+      if (!isAutomateEnabled && intent.intent === 'automate_action') {
+        console.log(`[IntentDetection] OVERRIDING "automate_action" to "conversation" because automation is disabled`);
+        return {
+          intent: 'conversation',
+          confidence: 0.9,
+          params: {},
+          response: 'Automation is currently disabled. Please enable automation to use computer control commands.'
+        };
+      }
+      
+      // If automation enabled and looks like automation but wasn't classified, force it
       if (isAutomateEnabled && intent.intent !== 'automate_action') {
         const automationOverride = this.forceAutomationDetection(userInput);
         if (automationOverride) {
@@ -188,7 +213,7 @@ Respond with ONLY valid JSON, no markdown formatting.`;
     } catch (error) {
       console.error('[IntentDetection] Error:', error);
       
-      // Emergency fallback for automation
+      // Emergency fallback for automation only if enabled
       if (isAutomateEnabled) {
         const automationFallback = this.forceAutomationDetection(userInput);
         if (automationFallback) {
@@ -200,7 +225,8 @@ Respond with ONLY valid JSON, no markdown formatting.`;
       return {
         intent: 'conversation',
         confidence: 0.3,
-        params: {}
+        params: {},
+        response: !isAutomateEnabled ? 'Automation is currently disabled. Please enable automation to use computer control commands.' : undefined
       };
     }
   }
