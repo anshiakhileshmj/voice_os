@@ -32,5 +32,4 @@ export default defineConfig(({ mode }) => ({
       "@": path.resolve(__dirname, "./src"),
     },
   },
-  base: './', // Important for Electron to load files correctly
 }));
