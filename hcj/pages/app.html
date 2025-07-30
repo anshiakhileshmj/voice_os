@@ -7,38 +7,140 @@
     <title>MJAK AI Assistant - Chat</title>
     <link rel="stylesheet" href="../styles/main.css">
     <link rel="stylesheet" href="../styles/components.css">
+    <link rel="stylesheet" href="../styles/pages.css">
 </head>
 <body class="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
-    <div class="chat-container" data-auth-required>
-        <h1 style="text-align: center; margin-bottom: 20px; color: #1f2937;">MJAK AI Assistant</h1>
-        
-        <div class="chat-messages" id="chat-messages">
-            <div class="message assistant">
-                Hello! I'm your AI assistant. How can I help you today?
+    <div class="app-container" data-auth-required>
+        <!-- Settings Panel -->
+        <div class="settings-panel">
+            <div class="settings-header">
+                <h3>Settings</h3>
+            </div>
+            <div class="voice-settings">
+                <label>Voice Settings</label>
+                <select id="voice-select" class="voice-dropdown">
+                    <option value="JBFqnCBsd6RMkjVDRZzb">George</option>
+                    <option value="9BWtsMINqrJLrRacOk9x">Aria</option>
+                    <option value="CwhRBWXzGAHq8TQ4Fs17">Roger</option>
+                    <option value="EXAVITQu4vr4xnSDxMaL">Sarah</option>
+                    <option value="FGY2WhTYpPnrIDTdsKH5">Laura</option>
+                    <option value="IKne3meq5aSn9XLyUdCD">Charlie</option>
+                    <option value="TX3LPaxmHKxFdv7VOQHJ">Liam</option>
+                    <option value="XB0fDUnXU5powFXDhCwa">Charlotte</option>
+                </select>
             </div>
         </div>
-        
-        <div class="chat-input-container">
-            <input type="text" class="chat-input" id="message-input" placeholder="Type your message here..." autocomplete="off">
-            <button class="send-button" id="send-button">Send</button>
+
+        <!-- Main Chat Area -->
+        <div class="main-chat-area">
+            <h1 class="app-title">MJAK AI Assistant</h1>
+            
+            <!-- Animated Call Button -->
+            <div class="call-button-container">
+                <div class="animated-call-button" id="call-button">
+                    <div class="call-button-glow"></div>
+                    <button class="call-button" id="start-call">
+                        <span class="call-button-text">Start Call</span>
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Chat Messages -->
+            <div class="chat-messages" id="chat-messages">
+                <div class="message assistant">
+                    Hello! I'm your AI assistant. How can I help you today?
+                </div>
+            </div>
+            
+            <!-- Chat Input -->
+            <div class="chat-input-container">
+                <input type="text" class="chat-input" id="message-input" placeholder="Type your message here..." autocomplete="off">
+                <button class="send-button" id="send-button">Send</button>
+            </div>
+            
+            <!-- Control Buttons -->
+            <div class="control-buttons">
+                <button id="spotify-toggle" class="control-btn spotify-btn">
+                    Spotify: OFF
+                </button>
+                <button id="automate-toggle" class="control-btn automate-btn">
+                    Automate: OFF
+                </button>
+                <button id="logout-button" class="control-btn logout-btn">
+                    Logout
+                </button>
+            </div>
         </div>
-        
-        <div style="margin-top: 20px; display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">
-            <button id="spotify-toggle" class="glass-button" style="width: auto; padding: 10px 20px; font-size: 14px;">
-                Spotify: OFF
+
+        <!-- Transcript History Panel -->
+        <div class="transcript-panel">
+            <div class="transcript-header">
+                <h3>Transcript History</h3>
+            </div>
+            <div class="transcript-content" id="transcript-content">
+                <div class="transcript-empty">
+                    <div class="microphone-icon">🎤</div>
+                    <p>No transcripts yet</p>
+                    <p class="transcript-hint">Click "Start Recording" to begin transcribing your speech</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Floating Action Buttons -->
+        <div class="floating-actions">
+            <button class="fab spotify-fab" id="spotify-fab" title="Spotify">
+                <svg viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.6 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.42 1.56-.297.539-1.02.718-1.559.42z"/>
+                </svg>
             </button>
-            <button id="automate-toggle" class="glass-button" style="width: auto; padding: 10px 20px; font-size: 14px;">
-                Automate: OFF
+            <button class="fab power-fab" id="power-fab" title="Power">
+                <svg viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M16.56 5.44l-1.45 1.45C16.84 8.24 18 10.02 18 12c0 3.31-2.69 6-6 6s-6-2.69-6-6c0-1.98 1.16-3.76 2.89-5.11L7.44 5.44C5.36 7.12 4 9.4 4 12c0 4.42 3.58 8 8 8s8-3.58 8-8c0-2.6-1.36-4.88-3.44-6.56zM13 3h-2v10h2V3z"/>
+                </svg>
             </button>
-            <button id="logout-button" class="glass-button" style="width: auto; padding: 10px 20px; font-size: 14px; background: linear-gradient(to bottom, rgba(239, 68, 68, 0.15), rgba(239, 68, 68, 0.05));">
-                Logout
+            <button class="fab document-fab" id="document-fab" title="Documents">
+                <svg viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z"/>
+                </svg>
             </button>
+            <button class="fab close-fab" id="close-fab" title="Close">
+                <svg viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M19,6.41L17.59,5L12,10.59L6.41,5L5,6.41L10.59,12L5,17.59L6.41,19L12,13.41L17.59,19L19,17.59L13.41,12L19,6.41Z"/>
+                </svg>
+            </button>
+        </div>
+
+        <!-- Document Upload Modal -->
+        <div class="modal" id="document-modal" style="display: none;">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3>Upload Document</h3>
+                    <button class="modal-close" id="close-document-modal">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="upload-area" id="upload-area">
+                        <input type="file" id="file-input" accept=".txt,.pdf" style="display: none;">
+                        <div class="upload-placeholder">
+                            <div class="upload-icon">📁</div>
+                            <p>Click to upload or drag and drop</p>
+                            <p class="upload-hint">Supported formats: PDF, TXT</p>
+                        </div>
+                    </div>
+                    <div class="uploaded-documents" id="uploaded-documents"></div>
+                </div>
+            </div>
         </div>
     </div>
     
     <!-- Toast Container -->
     <div id="toast-container" style="position: fixed; top: 20px; right: 20px; z-index: 1000;"></div>
     
+    <!-- Audio Element for TTS -->
+    <audio id="tts-audio" style="display: none;"></audio>
+    
+    <script src="../js/utils.js"></script>
+    <script src="../js/hooks.js"></script>
+    <script src="../js/integrations.js"></script>
     <script src="../js/config.js"></script>
     <script src="../js/auth.js"></script>
     <script src="../js/services.js"></script>
