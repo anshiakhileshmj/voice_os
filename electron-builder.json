@@ -2,87 +2,31 @@
 {
   "appId": "com.mjak.automation",
   "productName": "MJAK Automation",
-  "compression": "normal",
-  "removePackageScripts": true,
   "directories": {
-    "output": "dist-electron",
-    "buildResources": "build"
+    "output": "dist-electron"
   },
   "files": [
     "dist/**/*",
     "electron/main.cjs",
     "electron/preload.cjs",
-    "public/favicon.ico",
     "!electron/main.js",
     "!electron/preload.js",
     "!os/**/*",
     "!src/**/*",
-    "!node_modules/**/*",
-    "!**/*.map"
+    "!public/**/*",
+    "!node_modules/**/*"
   ],
-  "extraResources": [
+  "extraFiles": [
     {
-      "from": "os/dist/api_server.exe",
-      "to": "python-dist/api_server.exe",
-      "filter": ["**/*"]
+      "from": "electron/main.cjs",
+      "to": "electron/main.cjs"
     },
     {
-      "from": "public/favicon.ico",
-      "to": "favicon.ico"
+      "from": "electron/preload.cjs",
+      "to": "electron/preload.cjs"
     }
   ],
-  "asarUnpack": [
-    "dist/**/*",
-    "public/**/*"
-  ],
-  "publish": null,
-  "buildDependenciesFromSource": false,
-  "nodeGypRebuild": false,
-  "npmRebuild": false,
-  "win": {
-    "target": [
-      {
-        "target": "nsis",
-        "arch": ["x64"]
-      }
-    ],
-    "icon": "public/favicon.ico",
-    "requestedExecutionLevel": "asInvoker",
-    "artifactName": "${productName}-${version}-${arch}.${ext}"
-  },
-  "nsis": {
-    "oneClick": false,
-    "allowToChangeInstallationDirectory": true,
-    "createDesktopShortcut": true,
-    "createStartMenuShortcut": true,
-    "installerIcon": "public/favicon.ico",
-    "uninstallerIcon": "public/favicon.ico",
-    "installerHeaderIcon": "public/favicon.ico",
-    "deleteAppDataOnUninstall": true,
-    "runAfterFinish": true
-  },
-  "mac": {
-    "target": [
-      {
-        "target": "dmg",
-        "arch": ["x64", "arm64"]
-      }
-    ],
-    "icon": "public/favicon.ico",
-    "category": "public.app-category.productivity"
-  },
-  "linux": {
-    "target": [
-      {
-        "target": "AppImage",
-        "arch": ["x64"]
-      }
-    ],
-    "icon": "public/favicon.ico",
-    "category": "Utility"
-  }
-}
-
+  "extraResources": [
     {
       "from": "os/dist/api_server.exe",
       "to": "python-dist/api_server.exe",

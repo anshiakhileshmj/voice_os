@@ -13,9 +13,6 @@ export default defineConfig(({ mode }) => ({
   build: {
     outDir: 'dist',
     assetsDir: 'assets',
-    sourcemap: false,
-    minify: 'terser',
-    target: 'es2015',
     rollupOptions: {
       output: {
         manualChunks: {
@@ -36,5 +33,5 @@ export default defineConfig(({ mode }) => ({
       "@": path.resolve(__dirname, "./src"),
     },
   },
-  base: mode === 'production' ? './' : '/',
+  base: './',
 }));

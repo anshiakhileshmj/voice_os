@@ -33,7 +33,6 @@ echo ✓ Node.js dependencies installed
 
 echo.
 echo [3/7] Building React application...
-set NODE_ENV=production
 call npm run build
 if !errorlevel! neq 0 (
     echo ✗ React build failed!
@@ -41,15 +40,6 @@ if !errorlevel! neq 0 (
     exit /b 1
 )
 echo ✓ React build complete
-
-echo.
-echo [3.5/7] Verifying React build...
-if not exist "dist\index.html" (
-    echo ✗ React build verification failed - index.html not found!
-    pause
-    exit /b 1
-)
-echo ✓ React build verified
 
 echo.
 echo [4/7] Building Python backend...
@@ -95,16 +85,10 @@ if not exist "electron\preload.cjs" (
     pause
     exit /b 1
 )
-if not exist "dist\index.html" (
-    echo ✗ dist\index.html not found!
-    pause
-    exit /b 1
-)
 echo ✓ Electron files verified
 
 echo.
 echo [7/7] Building Electron application...
-set NODE_ENV=production
 call npx electron-builder --win
 if !errorlevel! neq 0 (
     echo ✗ Electron build failed!

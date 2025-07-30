@@ -2,7 +2,7 @@
 const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
 const { spawn } = require('child_process');
-const isDev = !app.isPackaged;
+const isDev = process.env.NODE_ENV === 'development';
 
 let mainWindow;
 let pythonProcess;
@@ -12,82 +12,33 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
-    show: false,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
-      preload: isDev 
-        ? path.join(__dirname, 'preload.cjs')
-        : path.join(__dirname, '../electron/preload.cjs')
+      preload: path.join(__dirname, 'preload.cjs')
     },
-    icon: isDev 
-      ? path.join(__dirname, '../public/favicon.ico')
-      : path.join(process.resourcesPath, 'app.asar.unpacked/public/favicon.ico')
+    icon: path.join(__dirname, '../public/favicon.ico'),
+    show: false
   });
 
   // Show window when ready to prevent blank screen
   mainWindow.once('ready-to-show', () => {
-    console.log('Window ready to show');
     mainWindow.show();
-    
-    // Focus the window
-    if (process.platform === 'darwin') {
-      app.focus();
-    } else {
-      mainWindow.focus();
-    }
   });
-
-  // Handle loading errors
-  mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
-    console.error('Failed to load:', errorCode, errorDescription, validatedURL);
-    
-    // Try to load a fallback page or show error
-    mainWindow.loadURL('data:text/html,<h1>Loading Error</h1><p>Failed to load the application. Please check if the build files exist.</p>');
-  });
-
-  // Add loading timeout
-  setTimeout(() => {
-    if (!mainWindow.isVisible()) {
-      console.log('Window not visible after timeout, forcing show');
-      mainWindow.show();
-    }
-  }, 5000);
 
   // Start Python API server
-  if (!isDev) {
-    startPythonServer();
-  }
+  startPythonServer();
   // Start Automate Script
-  if (!isDev) {
-    startAutomateScript();
-  }
+  startAutomateScript();
 
   // Load the React app
   if (isDev) {
-    console.log('Loading dev server...');
     mainWindow.loadURL('http://localhost:5173');
     mainWindow.webContents.openDevTools();
   } else {
     const indexPath = path.join(__dirname, '../dist/index.html');
     console.log('Loading index.html from:', indexPath);
-    
-    // Check if file exists before loading
-    const fs = require('fs');
-    if (fs.existsSync(indexPath)) {
-      mainWindow.loadFile(indexPath);
-    } else {
-      console.error('Index.html not found at:', indexPath);
-      // Try alternative path
-      const altPath = path.join(process.resourcesPath, 'app.asar.unpacked/dist/index.html');
-      console.log('Trying alternative path:', altPath);
-      if (fs.existsSync(altPath)) {
-        mainWindow.loadFile(altPath);
-      } else {
-        // Load error page
-        mainWindow.loadURL('data:text/html,<h1>Build Error</h1><p>Application files not found. Please rebuild the application.</p>');
-      }
-    }
+    mainWindow.loadFile(indexPath);
   }
 
   mainWindow.on('closed', () => {
@@ -103,14 +54,19 @@ function createWindow() {
 
 function startPythonServer() {
   try {
-    const pythonExecutable = path.join(process.resourcesPath, 'python-dist', 'api_server.exe');
-    const scriptPath = pythonExecutable;
+    const pythonExecutable = isDev 
+      ? 'python' 
+      : path.join(process.resourcesPath, 'python-dist', 'api_server.exe');
+    
+    const scriptPath = isDev 
+      ? path.join(__dirname, '../os/api_server.py')
+      : pythonExecutable;
 
     console.log('Starting Python server:', scriptPath);
 
-    const args = [];
+    const args = isDev ? [scriptPath] : [];
     const options = {
-      cwd: process.resourcesPath,
+      cwd: isDev ? path.join(__dirname, '../os') : process.resourcesPath,
       stdio: 'pipe'
     };
 
@@ -134,9 +90,11 @@ function startPythonServer() {
 
 function startAutomateScript() {
   try {
-    const pythonExecutable = 'python';
+    const pythonExecutable = isDev 
+      ? 'python' 
+      : 'python';
     const args = ['-m', 'operate.main'];
-    const cwd = process.resourcesPath;
+    const cwd = isDev ? path.join(__dirname, '../os') : process.resourcesPath;
 
     console.log('Starting Automate Script:', pythonExecutable, args.join(' '));
 
@@ -159,12 +117,10 @@ function startAutomateScript() {
 }
 
 app.whenReady().then(() => {
-  console.log('App ready, creating window...');
   createWindow();
 });
 
 app.on('window-all-closed', () => {
-  console.log('All windows closed');
   if (pythonProcess) {
     pythonProcess.kill();
   }
@@ -177,24 +133,7 @@ app.on('window-all-closed', () => {
 });
 
 app.on('activate', () => {
-  console.log('App activated');
   if (mainWindow === null) {
     createWindow();
   }
-});
-
-// Handle app startup errors
-app.on('ready', () => {
-  console.log('Electron app is ready');
-});
-
-// Prevent navigation to external URLs
-app.on('web-contents-created', (event, contents) => {
-  contents.on('will-navigate', (navigationEvent, navigationUrl) => {
-    const parsedUrl = new URL(navigationUrl);
-    
-    if (parsedUrl.origin !== 'http://localhost:5173' && !navigationUrl.startsWith('file://')) {
-      navigationEvent.preventDefault();
-    }
-  });
 });
