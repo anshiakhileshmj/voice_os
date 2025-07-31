@@ -81,16 +81,6 @@ export class SpotifyService {
     return tokens !== null;
   }
 
-  async checkConnection(): Promise<boolean> {
-    return this.isConnected();
-  }
-
-  async generateActions(objective: string): Promise<any[]> {
-    // This would integrate with your automation service
-    // For now, return empty array
-    return [];
-  }
-
   async getUserProfile(): Promise<any> {
     const accessToken = await this.getValidAccessToken();
     if (!accessToken) throw new Error('Not authenticated');

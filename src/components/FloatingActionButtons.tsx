@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
@@ -86,14 +87,6 @@ const FloatingActionButtons: React.FC<FloatingActionButtonsProps> = ({
   };
 
   const handleAutomateToggle = async () => {
-    if (!isAutomateConnected) {
-      toast({
-        title: "Service Not Ready",
-        description: "Automation service is starting up. Please wait...",
-        variant: "destructive"
-      });
-      return;
-    }
     onAutomateToggle(!isAutomateEnabled);
   };
 
@@ -114,11 +107,8 @@ const FloatingActionButtons: React.FC<FloatingActionButtonsProps> = ({
             </div>
           </button>
 
-          {/* Automate Button with status indicator */}
-          <div className="flex justify-center relative">
-            {!isAutomateConnected && (
-              <div className="absolute -top-2 -right-2 w-4 h-4 bg-yellow-500 rounded-full animate-pulse z-10 border-2 border-black"></div>
-            )}
+          {/* Automate Button */}
+          <div className="flex justify-center">
             <div className="power-switch" onClick={handleAutomateToggle}>
               <input type="checkbox" id="power-toggle" checked={isAutomateEnabled} readOnly />
               <div className="button">
