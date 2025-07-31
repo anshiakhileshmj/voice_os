@@ -1,11 +1,10 @@
+
 import React, { useState, useEffect } from 'react';
-import { useRouter } from 'next/router';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { spotifyService } from '@/services/spotifyService';
 import { documentService } from '@/services/documentService';
 import { AutomateAction } from '@/services/automateService';
-import { ModeToggle } from '@/components/mode-toggle';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import { Switch } from "@/components/ui/switch"
@@ -15,8 +14,7 @@ import AutomatePowerSwitch from '@/components/AutomatePowerSwitch';
 import { useAutomation } from '@/hooks/useAutomation';
 
 const Index = () => {
-  const { user, isLoading } = useAuth();
-  const router = useRouter();
+  const { user, loading } = useAuth();
   const { toast } = useToast();
 
   const [isSpotifyEnabled, setIsSpotifyEnabled] = useState(false);
@@ -35,15 +33,16 @@ const Index = () => {
   } = useAutomation();
 
   useEffect(() => {
-    if (!isLoading && !user) {
-      router.push('/login');
+    if (!loading && !user) {
+      // Redirect to login - this would need to be handled by your router
+      window.location.href = '/auth';
     }
-  }, [user, isLoading, router]);
+  }, [user, loading]);
 
   useEffect(() => {
     const checkSpotifyConnection = async () => {
       if (isSpotifyEnabled) {
-        const connected = await spotifyService.checkConnection();
+        const connected = await spotifyService.isConnected();
         setIsSpotifyConnected(connected);
       }
     };
@@ -80,7 +79,7 @@ const Index = () => {
 
     setIsObjectiveLoading(true);
     try {
-      const actions = await spotifyService.generateActions(objective);
+      const actions = await automateService.generateActions(objective);
       setGeneratedActions(actions);
       toast({
         title: "Actions Generated",
@@ -97,7 +96,7 @@ const Index = () => {
     }
   };
 
-  if (isLoading) {
+  if (loading) {
     return <Skeleton className="h-12 w-[200px]" />;
   }
 
@@ -105,14 +104,16 @@ const Index = () => {
     return null;
   }
 
+  const userEmail = user.email || '';
+  const userName = userEmail.split('@')[0] || 'User';
+
   return (
     <div className="container relative min-h-screen flex-center flex-col">
-      <ModeToggle />
       <h1 className="scroll-m-20 text-2xl font-semibold tracking-tight transition-colors">
-        Welcome to MJAK Automation, {user.name}
+        Welcome to MJAK Automation, {userName}
       </h1>
       <p className="text-muted-foreground">
-        {user.email}
+        {userEmail}
       </p>
 
       <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3 mt-8">
