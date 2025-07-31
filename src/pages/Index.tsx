@@ -17,6 +17,7 @@ import DocumentUpload from '@/components/DocumentUpload';
 import spotifyIcon from '@/assets/spotify-icon.svg';
 import AutomatePowerSwitch from '../components/AutomatePowerSwitch';
 import AnimatedCallButton from '../components/AnimatedCallButton';
+import { createSpeechRecognition } from '@/services/speechRecognitionService';
 
 interface TranscriptEntry {
   id: string;
@@ -142,7 +143,9 @@ const Index = () => {
 
   useEffect(() => {
     // Check if speech recognition is supported
-    if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+    const isElectron = navigator.userAgent.toLowerCase().indexOf('electron') > -1;
+    
+    if (!isElectron && !('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
       setIsSupported(false);
       toast({
         title: "Not Supported",
@@ -153,21 +156,21 @@ const Index = () => {
     }
 
     // Initialize speech recognition
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    recognitionRef.current = new SpeechRecognition();
+    recognitionRef.current = createSpeechRecognition();
     
     if (recognitionRef.current) {
       recognitionRef.current.continuous = true;
       recognitionRef.current.interimResults = true;
       recognitionRef.current.lang = 'en-US';
 
-      recognitionRef.current.onresult = (event) => {
+      recognitionRef.current.addEventListener('result', (event: any) => {
+        const speechEvent = event.detail || event;
         let finalTranscript = '';
         let interimTranscript = '';
 
-        for (let i = event.resultIndex; i < event.results.length; i++) {
-          const transcript = event.results[i][0].transcript;
-          if (event.results[i].isFinal) {
+        for (let i = speechEvent.resultIndex; i < speechEvent.results.length; i++) {
+          const transcript = speechEvent.results[i][0].transcript;
+          if (speechEvent.results[i].isFinal) {
             finalTranscript += transcript;
           } else {
             interimTranscript += transcript;
@@ -179,7 +182,7 @@ const Index = () => {
             id: Date.now().toString(),
             text: finalTranscript.trim(),
             timestamp: new Date(),
-            confidence: event.results[event.results.length - 1][0].confidence
+            confidence: speechEvent.results[speechEvent.results.length - 1][0].confidence
           };
           
           setTranscript(prev => [...prev, newEntry]);
@@ -190,22 +193,31 @@ const Index = () => {
         } else {
           setCurrentTranscript(interimTranscript);
         }
-      };
+      });
 
-      recognitionRef.current.onerror = (event) => {
-        console.error('Speech recognition error:', event.error);
+      recognitionRef.current.addEventListener('error', (event: any) => {
+        const error = event.detail?.error || event.error || 'unknown_error';
+        console.error('Speech recognition error:', error);
+        
+        let errorMessage = 'Please try again.';
+        if (error === 'microphone_access_denied') {
+          errorMessage = 'Microphone access denied. Please grant permission and try again.';
+        } else if (error === 'network') {
+          errorMessage = 'Network error. Please check your connection.';
+        }
+        
         toast({
           title: "Recognition Error",
-          description: `Error: ${event.error}. Please try again.`,
+          description: `Error: ${error}. ${errorMessage}`,
           variant: "destructive"
         });
         setIsRecording(false);
-      };
+      });
 
-      recognitionRef.current.onend = () => {
+      recognitionRef.current.addEventListener('end', () => {
         setIsRecording(false);
         setCurrentTranscript('');
-      };
+      });
     }
 
     return () => {
@@ -331,7 +343,7 @@ const Index = () => {
       console.error('Error starting recognition:', error);
       toast({
         title: "Error",
-        description: "Failed to start recording. Please try again.",
+        description: "Failed to start recording. Please ensure microphone access is granted.",
         variant: "destructive"
       });
     }
