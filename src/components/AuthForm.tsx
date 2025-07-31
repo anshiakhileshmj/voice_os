@@ -2,10 +2,12 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { toast } from "@/hooks/use-toast";
+import { useNavigate } from 'react-router-dom';
 import styled from 'styled-components';
 
 const AuthForm = () => {
   const { signUp, signIn, user } = useAuth();
+  const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
@@ -15,9 +17,9 @@ const AuthForm = () => {
   useEffect(() => {
     if (user) {
       // Redirect to app page after successful authentication
-      window.location.href = '/app';
+      navigate('/app');
     }
-  }, [user]);
+  }, [user, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
