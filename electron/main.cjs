@@ -5,6 +5,7 @@ function createWindow () {
   const win = new BrowserWindow({
     width: 1425,
     height: 900,
+    icon: path.join(__dirname, '../public/favicon.ico'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
@@ -13,7 +14,7 @@ function createWindow () {
   });
 
   win.loadFile(path.join(__dirname, '../dist/index.html'));
-  win.webContents.openDevTools(); // <--- This will help you debug
+  // win.webContents.openDevTools(); // <--- This will help you debug
 }
 
 app.whenReady().then(createWindow);
