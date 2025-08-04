@@ -1,3 +1,4 @@
+
 import { supabase } from '@/integrations/supabase/client';
 
 export interface ConversationMessage {
@@ -6,15 +7,24 @@ export interface ConversationMessage {
 }
 
 export class LLMService {
+  private isProcessing = false; // Prevent duplicate requests
+  
   async generateResponse(
     userMessage: string, 
     conversationHistory: ConversationMessage[] = []
-  ): Promise<{ response: string; updatedHistory: ConversationMessage[] }> {
+  ): Promise<{ response: string; updatedHistory: ConversationMessage[]; modelUsed?: string }> {
     if (!userMessage.trim()) {
       throw new Error('Message cannot be empty.');
     }
 
+    // Prevent duplicate requests
+    if (this.isProcessing) {
+      console.log('Request already in progress, skipping duplicate');
+      throw new Error('Request already in progress');
+    }
+
     try {
+      this.isProcessing = true;
       console.log('Generating LLM response for:', userMessage.substring(0, 50) + '...');
       
       // Get the current session to include auth header
@@ -47,7 +57,8 @@ export class LLMService {
       console.log('Successfully received LLM response:', result.response.substring(0, 100) + '...');
       return {
         response: result.response,
-        updatedHistory: result.updatedHistory
+        updatedHistory: result.updatedHistory,
+        modelUsed: result.modelUsed
       };
     } catch (error) {
       console.error('LLM service error:', error);
@@ -55,7 +66,30 @@ export class LLMService {
         throw new Error(`Failed to generate LLM response: ${error.message}`);
       }
       throw new Error('Failed to generate LLM response: Unknown error');
+    } finally {
+      this.isProcessing = false; // Always reset the flag
     }
+  }
+
+  // Simple intent detection without JSON parsing issues
+  detectIntent(message: string): { intent: string; confidence: number; params: any } {
+    const lowerMessage = message.toLowerCase().trim();
+    
+    // Simple keyword-based intent detection to avoid JSON parsing issues
+    if (lowerMessage.includes('hello') || lowerMessage.includes('hi') || lowerMessage.includes('hey')) {
+      return { intent: 'greeting', confidence: 0.8, params: {} };
+    }
+    
+    if (lowerMessage.includes('open') || lowerMessage.includes('launch') || lowerMessage.includes('start')) {
+      return { intent: 'automation', confidence: 0.7, params: { action: 'open' } };
+    }
+    
+    if (lowerMessage.includes('weather') || lowerMessage.includes('temperature')) {
+      return { intent: 'weather', confidence: 0.9, params: {} };
+    }
+    
+    // Default to conversation
+    return { intent: 'conversation', confidence: 0.5, params: {} };
   }
 }
 

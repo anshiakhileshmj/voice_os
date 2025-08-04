@@ -17,11 +17,12 @@ serve(async (req) => {
       throw new Error('Message is required')
     }
 
-    // Use fastest models first for better response times
-    const FAST_MODELS = [
-      'meta-llama/Llama-3.2-1B-Instruct-Turbo',  // Fastest
-      'meta-llama/Llama-3.2-3B-Instruct-Turbo',  // Good balance
-      'NousResearch/Nous-Hermes-2-Mixtral-8x7B-DPO'
+    // Use ONLY free models from Together AI - updated list of working free models
+    const FREE_FAST_MODELS = [
+      'meta-llama/Llama-3.2-3B-Instruct-Turbo',  // This one works from logs
+      'NousResearch/Nous-Hermes-2-Mixtral-8x7B-DPO',
+      'mistralai/Mixtral-8x7B-Instruct-v0.1',
+      'microsoft/DialoGPT-medium'
     ]
 
     const TOGETHER_AI_API_KEY = Deno.env.get('TOGETHER_AI_API_KEY')
@@ -31,13 +32,13 @@ serve(async (req) => {
 
     console.log('Processing LLM request:', { message: message.substring(0, 50) + '...', historyLength: conversationHistory.length })
 
-    // Keep only last 1 message to reduce processing time
-    const recentHistory = conversationHistory.slice(-1)
+    // Keep only last 2 messages for context but prevent loops
+    const recentHistory = conversationHistory.slice(-2)
     
     const messages = [
       {
         role: 'system',
-        content: 'You are a helpful AI assistant. Give extremely brief responses in 5-10 words maximum. Be direct and concise.'
+        content: 'You are a helpful AI assistant. Give clear, accurate, and concise responses. Always respond in plain text, never in JSON format unless specifically requested to return JSON data. Be conversational and helpful.'
       },
       ...recentHistory,
       {
@@ -46,11 +47,11 @@ serve(async (req) => {
       }
     ]
 
-    // Try each model until one works
+    // Try each free model until one works
     let lastError = null
-    for (const model of FAST_MODELS) {
+    for (const model of FREE_FAST_MODELS) {
       try {
-        console.log(`Trying model: ${model}`)
+        console.log(`Trying free model: ${model}`)
         
         const response = await fetch('https://api.together.xyz/v1/chat/completions', {
           method: 'POST',
@@ -61,22 +62,23 @@ serve(async (req) => {
           body: JSON.stringify({
             model: model,
             messages: messages,
-            max_tokens: 20, // Very small for faster responses
-            temperature: 0.3, // Lower for more focused responses
-            top_p: 0.7,
+            max_tokens: 150, // Reasonable length for faster responses
+            temperature: 0.7,
+            top_p: 0.9,
             stream: false,
-            stop: ['.', '!', '?'], // Stop at first sentence
+            stop: null, // Let it complete naturally
           }),
         })
 
         if (response.ok) {
           const result = await response.json()
           const aiResponse = result.choices[0].message.content.trim()
-          console.log(`Success with model ${model}:`, aiResponse.substring(0, 50) + '...')
+          console.log(`Success with free model ${model}:`, aiResponse.substring(0, 50) + '...')
           
           return new Response(
             JSON.stringify({ 
               response: aiResponse,
+              modelUsed: model,
               updatedHistory: [
                 ...conversationHistory,
                 { role: 'user', content: message },
@@ -89,19 +91,19 @@ serve(async (req) => {
           )
         } else {
           const errorText = await response.text()
-          console.log(`Model ${model} failed:`, errorText)
+          console.log(`Free model ${model} failed:`, errorText)
           lastError = errorText
           continue
         }
       } catch (error) {
-        console.log(`Model ${model} error:`, error)
+        console.log(`Free model ${model} error:`, error)
         lastError = error
         continue
       }
     }
 
-    // If all models failed, throw the last error
-    throw new Error(`All models failed. Last error: ${lastError}`)
+    // If all free models failed, throw error
+    throw new Error(`All free models failed. Last error: ${lastError}`)
 
   } catch (error) {
     console.error('LLM chat error:', error)
