@@ -1,5 +1,5 @@
 
-import { customTTSService } from '../../tts/customTTSService';
+import { supabase } from '@/integrations/supabase/client';
 
 export interface TTSVoiceSettings {
   speed?: number;
@@ -22,7 +22,7 @@ export class ConsolidatedTTSService {
 
   async convertTextToSpeech(
     text: string,
-    voiceId: string = 'en-us-female-1',
+    voiceId: string = 'female-en-us',
     voiceSettings?: TTSVoiceSettings
   ): Promise<{ audioBlob: Blob; modelUsed: string }> {
     if (!text.trim()) {
@@ -31,45 +31,63 @@ export class ConsolidatedTTSService {
 
     console.log('Converting text to speech:', text.substring(0, 50) + '...');
 
+    // Try Supabase Edge Function first (works in online environment)
     try {
-      // Use your custom TTS service first
-      const result = await customTTSService.convertTextToSpeech(
-        text,
-        voiceId,
-        true, // use fallback
-        voiceSettings
-      );
+      const { data, error } = await supabase.functions.invoke('text-to-speech', {
+        body: {
+          text: text.trim(),
+          voiceId: voiceId,
+          modelId: 'custom_multilingual_v1',
+        },
+      });
 
-      console.log(`Successfully received audio data: ${result.audioBlob.size} bytes`);
-      return result;
-    } catch (error) {
-      console.error('Custom TTS failed, trying Supabase edge function:', error);
+      if (error) {
+        throw new Error(`Supabase TTS failed: ${error.message}`);
+      }
+
+      if (!data) {
+        throw new Error('No audio data received from Supabase TTS');
+      }
+
+      // Convert the response to blob
+      const audioBlob = new Blob([data], { type: 'audio/mpeg' });
       
-      // Fallback to Supabase edge function
+      console.log(`Successfully received audio data from Supabase: ${audioBlob.size} bytes`);
+      return { audioBlob, modelUsed: 'supabase-edge-tts' };
+      
+    } catch (supabaseError) {
+      console.warn('Supabase TTS failed, trying fallback:', supabaseError);
+      
+      // Fallback to direct HTTP request (only for development)
       try {
-        const response = await fetch('https://uasluhbtcpuigwkuslum.supabase.co/functions/v1/text-to-speech', {
+        const response = await fetch('http://localhost:8001/api/tts/generate', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
             text: text.trim(),
-            voiceId: voiceId,
-            modelId: 'custom_multilingual_v1',
+            voice_id: voiceId,
+            language: 'en',
+            use_fallback: true,
+            speed: voiceSettings?.speed || 1.0,
+            stability: voiceSettings?.stability || 0.6,
+            similarity_boost: voiceSettings?.similarity_boost || 0.7,
+            use_speaker_boost: voiceSettings?.use_speaker_boost || false
           }),
         });
 
         if (!response.ok) {
-          throw new Error(`Supabase TTS failed: ${response.statusText}`);
+          throw new Error(`Local TTS failed: ${response.statusText}`);
         }
 
-        const arrayBuffer = await response.arrayBuffer();
-        const audioBlob = new Blob([arrayBuffer], { type: 'audio/mpeg' });
+        const audioBlob = await response.blob();
         
-        console.log(`Successfully received audio data from Supabase: ${audioBlob.size} bytes`);
-        return { audioBlob, modelUsed: 'supabase-edge-tts' };
-      } catch (supabaseError) {
-        throw new Error(`All TTS methods failed: Custom: ${error}, Supabase: ${supabaseError}`);
+        console.log(`Successfully received audio data from local TTS: ${audioBlob.size} bytes`);
+        return { audioBlob, modelUsed: 'local-tts' };
+        
+      } catch (localError) {
+        throw new Error(`All TTS methods failed: Supabase: ${supabaseError}, Local: ${localError}`);
       }
     }
   }

@@ -1,96 +1,117 @@
 
 import { supabase } from '@/integrations/supabase/client';
 
-export interface ConversationMessage {
-  role: 'user' | 'assistant' | 'system';
-  content: string;
+interface LLMResponse {
+  intent: string;
+  confidence: number;
+  params: any;
+  response: string;
 }
 
+// Free and fast models from Together AI - prioritize free models
+const FREE_MODELS = [
+  'meta-llama/Llama-3.2-3B-Instruct-Turbo',
+  'meta-llama/Llama-3.2-1B-Instruct-Turbo',
+  'microsoft/DialoGPT-medium',
+  'mistralai/Mistral-7B-Instruct-v0.1',
+];
+
 export class LLMService {
-  private isProcessing = false; // Prevent duplicate requests
+  private static instance: LLMService;
+  private processing = false; // Prevent duplicate calls
   
-  async generateResponse(
-    userMessage: string, 
-    conversationHistory: ConversationMessage[] = []
-  ): Promise<{ response: string; updatedHistory: ConversationMessage[]; modelUsed?: string }> {
-    if (!userMessage.trim()) {
-      throw new Error('Message cannot be empty.');
+  private constructor() {}
+
+  static getInstance(): LLMService {
+    if (!LLMService.instance) {
+      LLMService.instance = new LLMService();
+    }
+    return LLMService.instance;
+  }
+
+  async generateResponse(userInput: string): Promise<string> {
+    // Prevent duplicate processing
+    if (this.processing) {
+      console.log('Already processing, ignoring duplicate request');
+      return '';
     }
 
-    // Prevent duplicate requests
-    if (this.isProcessing) {
-      console.log('Request already in progress, skipping duplicate');
-      throw new Error('Request already in progress');
-    }
-
+    this.processing = true;
+    
     try {
-      this.isProcessing = true;
-      console.log('Generating LLM response for:', userMessage.substring(0, 50) + '...');
-      
-      // Get the current session to include auth header
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        throw new Error('User not authenticated');
-      }
+      console.log('Generating LLM response for:', userInput.substring(0, 50) + '...');
 
-      // Use direct fetch with proper headers
-      const response = await fetch('https://uasluhbtcpuigwkuslum.supabase.co/functions/v1/llm-chat', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.access_token}`,
-          'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVhc2x1aGJ0Y3B1aWd3a3VzbHVtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTEzNDkwOTUsImV4cCI6MjA2NjkyNTA5NX0.hmdgaWm1-Xso9ZIQHiVSWcuPEfu4qmat-YR1qoYAFAs',
-        },
-        body: JSON.stringify({
-          message: userMessage.trim(),
-          conversationHistory,
-        }),
+      const { data, error } = await supabase.functions.invoke('llm-chat', {
+        body: {
+          message: userInput,
+          model: FREE_MODELS[0], // Use the fastest free model
+          systemPrompt: 'You are a helpful AI assistant. Respond naturally and conversationally. Keep responses concise and friendly.'
+        }
       });
 
-      if (!response.ok) {
-        const error = await response.json().catch(() => ({ error: 'Failed to parse error response' }));
-        throw new Error(error.error || 'Failed to generate LLM response');
+      if (error) {
+        console.error('LLM service error:', error);
+        throw new Error(`LLM service failed: ${error.message}`);
       }
 
-      const result = await response.json();
-      
-      console.log('Successfully received LLM response:', result.response.substring(0, 100) + '...');
-      return {
-        response: result.response,
-        updatedHistory: result.updatedHistory,
-        modelUsed: result.modelUsed
-      };
-    } catch (error) {
-      console.error('LLM service error:', error);
-      if (error instanceof Error) {
-        throw new Error(`Failed to generate LLM response: ${error.message}`);
+      if (!data || !data.response) {
+        throw new Error('No response received from LLM service');
       }
-      throw new Error('Failed to generate LLM response: Unknown error');
+
+      console.log('Successfully received LLM response:', data.response.substring(0, 100) + '...');
+      return data.response;
+
+    } catch (error) {
+      console.error('Error generating LLM response:', error);
+      return 'I apologize, but I encountered an error while processing your request. Please try again.';
     } finally {
-      this.isProcessing = false; // Always reset the flag
+      // Reset processing flag after a short delay to prevent rapid successive calls
+      setTimeout(() => {
+        this.processing = false;
+      }, 1000);
     }
   }
 
-  // Simple intent detection without JSON parsing issues
-  detectIntent(message: string): { intent: string; confidence: number; params: any } {
-    const lowerMessage = message.toLowerCase().trim();
+  async processUserInput(userInput: string): Promise<LLMResponse> {
+    // Simple intent detection using keywords instead of JSON parsing
+    const intent = this.detectSimpleIntent(userInput);
+    const response = await this.generateResponse(userInput);
     
-    // Simple keyword-based intent detection to avoid JSON parsing issues
-    if (lowerMessage.includes('hello') || lowerMessage.includes('hi') || lowerMessage.includes('hey')) {
-      return { intent: 'greeting', confidence: 0.8, params: {} };
+    return {
+      intent: intent.intent,
+      confidence: intent.confidence,
+      params: intent.params,
+      response: response
+    };
+  }
+
+  private detectSimpleIntent(input: string): { intent: string; confidence: number; params: any } {
+    const lowerInput = input.toLowerCase();
+    
+    // Simple keyword-based intent detection
+    if (lowerInput.includes('hello') || lowerInput.includes('hi') || lowerInput.includes('hey')) {
+      return { intent: 'greeting', confidence: 0.9, params: {} };
     }
     
-    if (lowerMessage.includes('open') || lowerMessage.includes('launch') || lowerMessage.includes('start')) {
-      return { intent: 'automation', confidence: 0.7, params: { action: 'open' } };
+    if (lowerInput.includes('weather')) {
+      return { intent: 'weather', confidence: 0.8, params: {} };
     }
     
-    if (lowerMessage.includes('weather') || lowerMessage.includes('temperature')) {
-      return { intent: 'weather', confidence: 0.9, params: {} };
+    if (lowerInput.includes('time') || lowerInput.includes('clock')) {
+      return { intent: 'time', confidence: 0.8, params: {} };
+    }
+    
+    if (lowerInput.includes('music') || lowerInput.includes('play') || lowerInput.includes('song')) {
+      return { intent: 'music', confidence: 0.7, params: {} };
     }
     
     // Default to conversation
-    return { intent: 'conversation', confidence: 0.5, params: {} };
+    return { intent: 'conversation', confidence: 0.6, params: {} };
+  }
+
+  isConfigured(): boolean {
+    return true; // Always return true since we're using Supabase edge functions
   }
 }
 
-export const llmService = new LLMService();
+export const llmService = LLMService.getInstance();
