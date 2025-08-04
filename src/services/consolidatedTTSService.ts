@@ -31,7 +31,7 @@ export class ConsolidatedTTSService {
 
     console.log('Converting text to speech:', text.substring(0, 50) + '...');
 
-    // Try Supabase Edge Function first
+    // Try Supabase Edge Function first (works in online environment)
     try {
       const { data, error } = await supabase.functions.invoke('text-to-speech', {
         body: {
@@ -42,7 +42,6 @@ export class ConsolidatedTTSService {
       });
 
       if (error) {
-        console.warn('Supabase TTS error:', error);
         throw new Error(`Supabase TTS failed: ${error.message}`);
       }
 
@@ -50,31 +49,16 @@ export class ConsolidatedTTSService {
         throw new Error('No audio data received from Supabase TTS');
       }
 
-      // Handle different response formats
-      let audioBlob: Blob;
-      
-      if (data instanceof ArrayBuffer) {
-        audioBlob = new Blob([data], { type: 'audio/mpeg' });
-      } else if (typeof data === 'string') {
-        // Handle base64 encoded audio
-        const binaryString = atob(data);
-        const bytes = new Uint8Array(binaryString.length);
-        for (let i = 0; i < binaryString.length; i++) {
-          bytes[i] = binaryString.charCodeAt(i);
-        }
-        audioBlob = new Blob([bytes], { type: 'audio/mpeg' });
-      } else {
-        // Assume it's already a blob-like object
-        audioBlob = new Blob([data], { type: 'audio/mpeg' });
-      }
+      // Convert the response to blob
+      const audioBlob = new Blob([data], { type: 'audio/mpeg' });
       
       console.log(`Successfully received audio data from Supabase: ${audioBlob.size} bytes`);
-      return { audioBlob, modelUsed: 'supabase-custom-tts' };
+      return { audioBlob, modelUsed: 'supabase-edge-tts' };
       
     } catch (supabaseError) {
-      console.warn('Supabase TTS failed, trying local fallback:', supabaseError);
+      console.warn('Supabase TTS failed, trying fallback:', supabaseError);
       
-      // Fallback to local TTS server
+      // Fallback to direct HTTP request (only for development)
       try {
         const response = await fetch('http://localhost:8001/api/tts/generate', {
           method: 'POST',
@@ -100,66 +84,33 @@ export class ConsolidatedTTSService {
         const audioBlob = await response.blob();
         
         console.log(`Successfully received audio data from local TTS: ${audioBlob.size} bytes`);
-        return { audioBlob, modelUsed: 'local-custom-tts' };
+        return { audioBlob, modelUsed: 'local-tts' };
         
       } catch (localError) {
-        console.error('All TTS methods failed:', { supabaseError, localError });
-        throw new Error(`TTS conversion failed: ${supabaseError}`);
+        throw new Error(`All TTS methods failed: Supabase: ${supabaseError}, Local: ${localError}`);
       }
     }
   }
 
   async playAudio(audioBlob: Blob): Promise<void> {
     try {
-      // Ensure we have a valid audio blob
-      if (!audioBlob || audioBlob.size === 0) {
-        throw new Error('Invalid audio blob');
-      }
-
       const url = URL.createObjectURL(audioBlob);
       const audio = new Audio(url);
       
-      // Set audio properties for better playback
-      audio.preload = 'auto';
-      audio.volume = 1.0;
-      
       return new Promise((resolve, reject) => {
-        const cleanup = () => {
+        audio.onended = () => {
           URL.revokeObjectURL(url);
-          audio.removeEventListener('ended', onEnded);
-          audio.removeEventListener('error', onError);
-          audio.removeEventListener('canplay', onCanPlay);
-        };
-
-        const onEnded = () => {
-          cleanup();
           resolve();
         };
-
-        const onError = (event: Event) => {
-          cleanup();
-          console.error('Audio playback error:', event);
+        audio.onerror = () => {
+          URL.revokeObjectURL(url);
           reject(new Error('Audio playback failed'));
         };
-
-        const onCanPlay = () => {
-          console.log('Audio is ready to play');
-        };
-
-        audio.addEventListener('ended', onEnded);
-        audio.addEventListener('error', onError);
-        audio.addEventListener('canplay', onCanPlay);
-        
-        // Start playback
-        audio.play().catch((playError) => {
-          cleanup();
-          console.error('Audio play() failed:', playError);
-          reject(new Error(`Audio play failed: ${playError.message}`));
-        });
+        audio.play().catch(reject);
       });
     } catch (error) {
-      console.error('Audio setup error:', error);
-      throw new Error(`Failed to play audio: ${error.message}`);
+      console.error('Audio playback error:', error);
+      throw new Error('Failed to play audio');
     }
   }
 
