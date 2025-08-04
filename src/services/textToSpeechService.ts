@@ -9,16 +9,16 @@ export interface Voice {
 }
 
 export const AVAILABLE_VOICES: Voice[] = [
-  { id: 'en-us-female-1', name: 'Female (US)', language: 'en', gender: 'female' },
-  { id: 'en-us-male-1', name: 'Male (US)', language: 'en', gender: 'male' },
-  { id: 'en-uk-female-1', name: 'Female (UK)', language: 'en', gender: 'female' },
-  { id: 'en-uk-male-1', name: 'Male (UK)', language: 'en', gender: 'male' },
-  { id: 'hi-female-1', name: 'Female (Hindi)', language: 'hi', gender: 'female' },
-  { id: 'hi-male-1', name: 'Male (Hindi)', language: 'hi', gender: 'male' },
-  { id: 'de-female-1', name: 'Female (German)', language: 'de', gender: 'female' },
-  { id: 'de-male-1', name: 'Male (German)', language: 'de', gender: 'male' },
-  { id: 'fr-female-1', name: 'Female (French)', language: 'fr', gender: 'female' },
-  { id: 'fr-male-1', name: 'Male (French)', language: 'fr', gender: 'male' },
+  { id: 'female-en-us', name: 'Female (US)', language: 'en', gender: 'female' },
+  { id: 'male-en-us', name: 'Male (US)', language: 'en', gender: 'male' },
+  { id: 'female-en-uk', name: 'Female (UK)', language: 'en', gender: 'female' },
+  { id: 'male-en-uk', name: 'Male (UK)', language: 'en', gender: 'male' },
+  { id: 'female-hindi', name: 'Female (Hindi)', language: 'hi', gender: 'female' },
+  { id: 'male-hindi', name: 'Male (Hindi)', language: 'hi', gender: 'male' },
+  { id: 'female-german', name: 'Female (German)', language: 'de', gender: 'female' },
+  { id: 'male-german', name: 'Male (German)', language: 'de', gender: 'male' },
+  { id: 'female-french', name: 'Female (French)', language: 'fr', gender: 'female' },
+  { id: 'male-french', name: 'Male (French)', language: 'fr', gender: 'male' },
 ];
 
 export class TextToSpeechService {
@@ -35,7 +35,7 @@ export class TextToSpeechService {
 
   async convertTextToSpeech(
     text: string, 
-    voiceId: string = 'en-us-female-1',
+    voiceId: string = 'female-en-us',
     voiceSettings?: TTSVoiceSettings
   ): Promise<ArrayBuffer> {
     const result = await consolidatedTTSService.convertTextToSpeech(text, voiceId, voiceSettings);
@@ -44,7 +44,7 @@ export class TextToSpeechService {
 
   async convertAndPlay(
     text: string,
-    voiceId: string = 'en-us-female-1',
+    voiceId: string = 'female-en-us',
     voiceSettings?: TTSVoiceSettings
   ): Promise<void> {
     const result = await consolidatedTTSService.convertTextToSpeech(text, voiceId, voiceSettings);
@@ -65,7 +65,7 @@ export class TextToSpeechService {
   }
 
   isConfigured(): boolean {
-    return true; // Always configured with multiple fallbacks
+    return true; // Always configured with custom TTS
   }
 }
 
