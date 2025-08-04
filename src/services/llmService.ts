@@ -1,6 +1,11 @@
 
 import { supabase } from '@/integrations/supabase/client';
 
+export interface ConversationMessage {
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+}
+
 interface LLMResponse {
   intent: string;
   confidence: number;
@@ -29,11 +34,11 @@ export class LLMService {
     return LLMService.instance;
   }
 
-  async generateResponse(userInput: string): Promise<string> {
+  async generateResponse(userInput: string, conversationHistory: ConversationMessage[] = []): Promise<{ response: string; updatedHistory: ConversationMessage[] }> {
     // Prevent duplicate processing
     if (this.processing) {
       console.log('Already processing, ignoring duplicate request');
-      return '';
+      return { response: '', updatedHistory: conversationHistory };
     }
 
     this.processing = true;
@@ -45,7 +50,8 @@ export class LLMService {
         body: {
           message: userInput,
           model: FREE_MODELS[0], // Use the fastest free model
-          systemPrompt: 'You are a helpful AI assistant. Respond naturally and conversationally. Keep responses concise and friendly.'
+          systemPrompt: 'You are a helpful AI assistant. Respond naturally and conversationally. Keep responses concise and friendly.',
+          conversationHistory: conversationHistory.slice(-4) // Keep last 4 messages for context
         }
       });
 
@@ -59,11 +65,33 @@ export class LLMService {
       }
 
       console.log('Successfully received LLM response:', data.response.substring(0, 100) + '...');
-      return data.response;
+      
+      // Create updated conversation history
+      const updatedHistory = [
+        ...conversationHistory,
+        { role: 'user' as const, content: userInput },
+        { role: 'assistant' as const, content: data.response }
+      ];
+
+      return { 
+        response: data.response,
+        updatedHistory: updatedHistory
+      };
 
     } catch (error) {
       console.error('Error generating LLM response:', error);
-      return 'I apologize, but I encountered an error while processing your request. Please try again.';
+      const errorResponse = 'I apologize, but I encountered an error while processing your request. Please try again.';
+      
+      const updatedHistory = [
+        ...conversationHistory,
+        { role: 'user' as const, content: userInput },
+        { role: 'assistant' as const, content: errorResponse }
+      ];
+
+      return { 
+        response: errorResponse,
+        updatedHistory: updatedHistory
+      };
     } finally {
       // Reset processing flag after a short delay to prevent rapid successive calls
       setTimeout(() => {
@@ -75,7 +103,7 @@ export class LLMService {
   async processUserInput(userInput: string): Promise<LLMResponse> {
     // Simple intent detection using keywords instead of JSON parsing
     const intent = this.detectSimpleIntent(userInput);
-    const response = await this.generateResponse(userInput);
+    const { response } = await this.generateResponse(userInput);
     
     return {
       intent: intent.intent,
