@@ -32,11 +32,7 @@ const Index = () => {
       return;
     }
 
-    recognition.onstart = () => {
-      console.log('Speech recognition started');
-      setIsListening(true);
-    };
-
+    // Set up event handlers before starting
     recognition.onend = () => {
       console.log('Speech recognition ended');
       setIsListening(false);
@@ -93,6 +89,9 @@ const Index = () => {
       }
     };
 
+    // Start recognition and set listening state
+    console.log('Starting speech recognition');
+    setIsListening(true);
     recognition.start();
   };
 
