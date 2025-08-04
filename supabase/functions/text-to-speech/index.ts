@@ -1,4 +1,3 @@
-
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 
 const corsHeaders = {
@@ -6,58 +5,70 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-// Voice configurations matching your custom TTS system
+// Voice configurations matching your custom TTS system from the dropdown
 const VOICE_CONFIGS = {
-  'JBFqnCBsd6RMkjVDRZzb': { // George - mapped to en-us-male-1
-    language: 'en', 
-    gender: 'male', 
-    accent: 'us',
-    edge_voice: 'en-US-GuyNeural',
-    gtts_lang: 'en'
-  },
-  '9BWtsMINqrJLrRacOk9x': { // Aria - mapped to en-us-female-1
+  'female-en-us': {
     language: 'en', 
     gender: 'female', 
     accent: 'us',
     edge_voice: 'en-US-AriaNeural',
     gtts_lang: 'en'
   },
-  'CwhRBWXzGAHq8TQ4Fs17': { // Roger - mapped to en-uk-male-1
+  'male-en-us': {
     language: 'en', 
     gender: 'male', 
-    accent: 'uk',
-    edge_voice: 'en-GB-RyanNeural',
+    accent: 'us',
+    edge_voice: 'en-US-GuyNeural',
     gtts_lang: 'en'
   },
-  'EXAVITQu4vr4xnSDxMaL': { // Sarah - mapped to en-uk-female-1
+  'female-en-uk': {
     language: 'en', 
     gender: 'female', 
     accent: 'uk',
     edge_voice: 'en-GB-SoniaNeural',
     gtts_lang: 'en'
   },
-  'FGY2WhTYpPnrIDTdsKH5': { // Laura - mapped to hi-female-1
+  'male-en-uk': {
+    language: 'en', 
+    gender: 'male', 
+    accent: 'uk',
+    edge_voice: 'en-GB-RyanNeural',
+    gtts_lang: 'en'
+  },
+  'female-hindi': {
     language: 'hi', 
     gender: 'female',
     edge_voice: 'hi-IN-SwaraNeural',
     gtts_lang: 'hi'
   },
-  'IKne3meq5aSn9XLyUdCD': { // Charlie - mapped to hi-male-1
+  'male-hindi': {
     language: 'hi', 
     gender: 'male',
     edge_voice: 'hi-IN-MadhurNeural',
     gtts_lang: 'hi'
   },
-  'TX3LPaxmHKxFdv7VOQHJ': { // Liam - mapped to de-male-1
+  'male-german': {
     language: 'de', 
     gender: 'male',
     edge_voice: 'de-DE-ConradNeural',
     gtts_lang: 'de'
   },
-  'XB0fDUnXU5powFXDhCwa': { // Charlotte - mapped to fr-female-1
+  'female-german': {
+    language: 'de', 
+    gender: 'female',
+    edge_voice: 'de-DE-KatjaNeural',
+    gtts_lang: 'de'
+  },
+  'female-french': {
     language: 'fr', 
     gender: 'female',
     edge_voice: 'fr-FR-DeniseNeural',
+    gtts_lang: 'fr'
+  },
+  'male-french': {
+    language: 'fr', 
+    gender: 'male',
+    edge_voice: 'fr-FR-HenriNeural',
     gtts_lang: 'fr'
   },
 }
@@ -147,8 +158,8 @@ serve(async (req) => {
       modelId 
     })
 
-    // Get voice configuration
-    const voiceConfig = VOICE_CONFIGS[voiceId] || VOICE_CONFIGS['9BWtsMINqrJLrRacOk9x'] // Default to Aria
+    // Get voice configuration - default to female-en-us if not found
+    const voiceConfig = VOICE_CONFIGS[voiceId] || VOICE_CONFIGS['female-en-us']
 
     // ElevenLabs-compatible settings
     const ttsSettings = {

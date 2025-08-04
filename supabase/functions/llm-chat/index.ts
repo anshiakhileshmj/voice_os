@@ -17,12 +17,11 @@ serve(async (req) => {
       throw new Error('Message is required')
     }
 
-    // Try multiple free models in order of preference
-    const FREE_MODELS = [
-      'meta-llama/Llama-3.2-3B-Instruct-Turbo',
-      'meta-llama/Llama-3.2-1B-Instruct-Turbo',
-      'NousResearch/Nous-Hermes-2-Mixtral-8x7B-DPO',
-      'mistralai/Mixtral-8x7B-Instruct-v0.1'
+    // Use fastest models first for better response times
+    const FAST_MODELS = [
+      'meta-llama/Llama-3.2-1B-Instruct-Turbo',  // Fastest
+      'meta-llama/Llama-3.2-3B-Instruct-Turbo',  // Good balance
+      'NousResearch/Nous-Hermes-2-Mixtral-8x7B-DPO'
     ]
 
     const TOGETHER_AI_API_KEY = Deno.env.get('TOGETHER_AI_API_KEY')
@@ -32,14 +31,13 @@ serve(async (req) => {
 
     console.log('Processing LLM request:', { message: message.substring(0, 50) + '...', historyLength: conversationHistory.length })
 
-    // Prepare messages array with system prompt and limited conversation history
-    // Keep only last 2 messages to reduce processing time and stay within limits
-    const recentHistory = conversationHistory.slice(-2)
+    // Keep only last 1 message to reduce processing time
+    const recentHistory = conversationHistory.slice(-1)
     
     const messages = [
       {
         role: 'system',
-        content: 'You are a helpful AI assistant. Give very concise responses in 1 sentence. Be brief and direct.'
+        content: 'You are a helpful AI assistant. Give extremely brief responses in 5-10 words maximum. Be direct and concise.'
       },
       ...recentHistory,
       {
@@ -50,7 +48,7 @@ serve(async (req) => {
 
     // Try each model until one works
     let lastError = null
-    for (const model of FREE_MODELS) {
+    for (const model of FAST_MODELS) {
       try {
         console.log(`Trying model: ${model}`)
         
@@ -63,16 +61,17 @@ serve(async (req) => {
           body: JSON.stringify({
             model: model,
             messages: messages,
-            max_tokens: 50, // Very small to avoid rate limits
-            temperature: 0.7,
-            top_p: 0.9,
+            max_tokens: 20, // Very small for faster responses
+            temperature: 0.3, // Lower for more focused responses
+            top_p: 0.7,
             stream: false,
+            stop: ['.', '!', '?'], // Stop at first sentence
           }),
         })
 
         if (response.ok) {
           const result = await response.json()
-          const aiResponse = result.choices[0].message.content
+          const aiResponse = result.choices[0].message.content.trim()
           console.log(`Success with model ${model}:`, aiResponse.substring(0, 50) + '...')
           
           return new Response(

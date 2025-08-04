@@ -10,14 +10,16 @@ export interface CustomTTSVoice {
 }
 
 export const CUSTOM_TTS_VOICES: CustomTTSVoice[] = [
-  { id: 'JBFqnCBsd6RMkjVDRZzb', name: 'George (US Male)', language: 'en', gender: 'male', accent: 'us' },
-  { id: '9BWtsMINqrJLrRacOk9x', name: 'Aria (US Female)', language: 'en', gender: 'female', accent: 'us' },
-  { id: 'CwhRBWXzGAHq8TQ4Fs17', name: 'Roger (UK Male)', language: 'en', gender: 'male', accent: 'uk' },
-  { id: 'EXAVITQu4vr4xnSDxMaL', name: 'Sarah (UK Female)', language: 'en', gender: 'female', accent: 'uk' },
-  { id: 'FGY2WhTYpPnrIDTdsKH5', name: 'Laura (Hindi Female)', language: 'hi', gender: 'female' },
-  { id: 'IKne3meq5aSn9XLyUdCD', name: 'Charlie (Hindi Male)', language: 'hi', gender: 'male' },
-  { id: 'TX3LPaxmHKxFdv7VOQHJ', name: 'Liam (German Male)', language: 'de', gender: 'male' },
-  { id: 'XB0fDUnXU5powFXDhCwa', name: 'Charlotte (French Female)', language: 'fr', gender: 'female' },
+  { id: 'female-en-us', name: 'Female (EN-US)', language: 'en', gender: 'female', accent: 'us' },
+  { id: 'male-en-us', name: 'Male (EN-US)', language: 'en', gender: 'male', accent: 'us' },
+  { id: 'female-en-uk', name: 'Female (EN-UK)', language: 'en', gender: 'female', accent: 'uk' },
+  { id: 'male-en-uk', name: 'Male (EN-UK)', language: 'en', gender: 'male', accent: 'uk' },
+  { id: 'female-hindi', name: 'Female (Hindi)', language: 'hi', gender: 'female' },
+  { id: 'male-hindi', name: 'Male (Hindi)', language: 'hi', gender: 'male' },
+  { id: 'female-german', name: 'Female (German)', language: 'de', gender: 'female' },
+  { id: 'male-german', name: 'Male (German)', language: 'de', gender: 'male' },
+  { id: 'female-french', name: 'Female (French)', language: 'fr', gender: 'female' },
+  { id: 'male-french', name: 'Male (French)', language: 'fr', gender: 'male' },
 ];
 
 export class CustomTTSService {
