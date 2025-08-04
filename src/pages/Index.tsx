@@ -1,8 +1,10 @@
+
 import React, { useState, useEffect, useCallback } from 'react';
-import { Button, Input } from '@nextui-org/react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
 import { LLMService } from '@/services/llmService';
-import { ActionRouter } from '@/services/actionRouter';
+import { actionRouter } from '@/services/actionRouter';
 import { SpeechRecognitionService } from '@/services/speechRecognitionService';
 import { textToSpeechService } from '@/services/textToSpeechService';
 import { consolidatedTTSService } from '@/services/consolidatedTTSService';
@@ -12,7 +14,6 @@ const Index = () => {
   const [isListening, setIsListening] = useState(false);
   const { toast } = useToast();
   const llmService = LLMService.getInstance();
-  const actionRouter = ActionRouter.getInstance();
   const speechRecognitionService = SpeechRecognitionService.getInstance();
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -21,6 +22,15 @@ const Index = () => {
 
   const handleSpeechToText = async (audioBlob: Blob) => {
     const recognition = speechRecognitionService.getRecognition();
+
+    if (!recognition) {
+      toast({
+        title: 'Speech Recognition Not Supported',
+        description: 'Your browser does not support speech recognition.',
+        variant: 'destructive',
+      });
+      return;
+    }
 
     recognition.onstart = () => {
       console.log('Speech recognition started');
@@ -76,7 +86,7 @@ const Index = () => {
         }
         
         // Route the action based on intent
-        await actionRouter.routeAction(llmResult, transcript);
+        const { actionResult } = await actionRouter.processUserInput(transcript, []);
         
       } catch (error) {
         console.error('Error processing speech:', error);
@@ -87,6 +97,15 @@ const Index = () => {
   };
 
   const startRecording = useCallback(async () => {
+    if (!speechRecognitionService.isSupported()) {
+      toast({
+        title: 'Speech Recognition Not Supported',
+        description: 'Your browser does not support speech recognition.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const mediaRecorder = new MediaRecorder(stream);
@@ -165,7 +184,7 @@ const Index = () => {
       }
 
       // Route the action based on intent
-      await actionRouter.routeAction(llmResult, inputText);
+      const { actionResult } = await actionRouter.processUserInput(inputText, []);
 
     } catch (error: any) {
       console.error('Error processing input:', error);
@@ -188,10 +207,10 @@ const Index = () => {
         className="mb-4"
       />
       <div className="flex gap-4">
-        <Button color="primary" onClick={handleSubmit}>
+        <Button onClick={handleSubmit}>
           Submit
         </Button>
-        <Button color="secondary" onClick={startRecording} disabled={isListening}>
+        <Button variant="secondary" onClick={startRecording} disabled={isListening}>
           {isListening ? 'Listening...' : 'Speak'}
         </Button>
       </div>

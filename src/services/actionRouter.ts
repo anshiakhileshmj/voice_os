@@ -20,10 +20,19 @@ export interface ActionResult {
 }
 
 export class ActionRouter {
+  private static instance: ActionRouter;
+
+  public static getInstance(): ActionRouter {
+    if (!ActionRouter.instance) {
+      ActionRouter.instance = new ActionRouter();
+    }
+    return ActionRouter.instance;
+  }
+
   async processUserInput(
     userInput: string,
     conversationHistory: ConversationMessage[],
-    isAutomateEnabled: boolean = true // Set default to true
+    isAutomateEnabled: boolean = true
   ): Promise<{ intent: IntentResult; actionResult?: ActionResult; llmResponse?: string }> {
     
     // First, detect intent using enhanced LLM
@@ -139,23 +148,19 @@ Respond ONLY with valid JSON.`;
         userInput,
         [
           { role: 'system', content: systemPrompt },
-          ...conversationHistory.slice(-2) // Keep minimal context for speed
+          ...conversationHistory.slice(-2)
         ]
       );
 
-      // Debug: Log the raw LLM response for intent detection
       console.debug('[IntentDetection][RawLLMResponse]', response);
 
-      // Try to parse JSON response - handle various formats
       let cleanResponse = response.replace(/```json\n?|\n?```/g, '').trim();
       
-      // If response doesn't start with {, try to find JSON in the response
       if (!cleanResponse.startsWith('{')) {
         const jsonMatch = cleanResponse.match(/\{.*\}/s);
         if (jsonMatch) {
           cleanResponse = jsonMatch[0];
         } else {
-          // If no JSON found, treat as conversation
           return {
             intent: 'conversation',
             confidence: 0.8,
@@ -204,7 +209,6 @@ Respond ONLY with valid JSON.`;
         };
       }
 
-      // Generate actions using the Python backend
       const actions = await automateService.generateActions(objective);
       
       if (actions.length === 0) {
@@ -215,7 +219,6 @@ Respond ONLY with valid JSON.`;
         };
       }
 
-      // Execute the actions
       const result = await automateService.executeActions({
         actions,
         objective
@@ -289,7 +292,6 @@ Respond ONLY with valid JSON.`;
         };
       }
 
-      // Check if user has premium
       const profile = await spotifyService.getUserProfile();
       if (profile.product !== 'premium') {
         return {
@@ -299,7 +301,6 @@ Respond ONLY with valid JSON.`;
         };
       }
 
-      // Get active devices
       const devices = await spotifyService.getDevices();
       const activeDevice = devices.find(d => d.is_active);
       
@@ -311,7 +312,6 @@ Respond ONLY with valid JSON.`;
         };
       }
 
-      // Search for track
       const query = song ? `${song} ${artist}` : artist;
       const track = await spotifyService.searchTrack(query);
       
@@ -323,7 +323,6 @@ Respond ONLY with valid JSON.`;
         };
       }
 
-      // Play track
       await spotifyService.playTrack(track.uri, activeDevice?.id);
       
       return {
@@ -383,7 +382,6 @@ Respond ONLY with valid JSON.`;
         };
       }
 
-      // Get user profile
       const { data: profile } = await supabase
         .from('profiles')
         .select('name, last_greeted_at')
@@ -392,7 +390,6 @@ Respond ONLY with valid JSON.`;
 
       const userName = profile?.name || user.email?.split('@')[0] || 'there';
 
-      // Check if we should greet today
       const shouldGreet = await locationService.shouldGreetUser(user.id);
       
       if (!shouldGreet) {
@@ -403,11 +400,9 @@ Respond ONLY with valid JSON.`;
         };
       }
 
-      // Get user location for personalized greeting
       const locationData = await locationService.getUserLocation();
       const greeting = locationService.getGreeting(locationData.timezone, userName);
       
-      // Update last greeted
       await locationService.updateLastGreeted(user.id);
       
       const locationGreeting = `${greeting}! How are things in ${locationData.city}, ${locationData.country}?`;
@@ -451,7 +446,6 @@ Respond ONLY with valid JSON.`;
           break;
           
         default:
-          // General location info
           response = `You're currently in ${locationData.city}, ${locationData.country}. The local time is ${new Date().toLocaleString("en-US", { timeZone: locationData.timezone, hour: '2-digit', minute: '2-digit', hour12: true })}.`;
       }
       
@@ -499,7 +493,6 @@ Respond ONLY with valid JSON.`;
       };
     }
 
-    // Process the document using the existing documentService
     try {
       const result = await documentService.processDocument(documentId, action, question);
       
@@ -527,7 +520,6 @@ Respond ONLY with valid JSON.`;
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      // Get location data if available
       let locationData = null;
       try {
         locationData = await locationService.getUserLocation();
@@ -550,4 +542,4 @@ Respond ONLY with valid JSON.`;
   }
 }
 
-export const actionRouter = new ActionRouter();
+export const actionRouter = ActionRouter.getInstance();
