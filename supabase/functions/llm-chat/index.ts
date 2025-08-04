@@ -17,29 +17,47 @@ serve(async (req) => {
       throw new Error('Message is required')
     }
 
-    // Try multiple free models in order of preference
-    const FREE_MODELS = [
-      'meta-llama/Llama-3.2-3B-Instruct-Turbo',
-      'meta-llama/Llama-3.2-1B-Instruct-Turbo',
-      'NousResearch/Nous-Hermes-2-Mixtral-8x7B-DPO',
-      'mistralai/Mixtral-8x7B-Instruct-v0.1'
-    ]
-
-    const TOGETHER_AI_API_KEY = Deno.env.get('TOGETHER_AI_API_KEY')
-    if (!TOGETHER_AI_API_KEY) {
-      throw new Error('Together AI API key not configured')
+    const OPENROUTER_API_KEY = Deno.env.get('OPENROUTER_API_KEY')
+    if (!OPENROUTER_API_KEY) {
+      throw new Error('OpenRouter API key not configured')
     }
 
-    console.log('Processing LLM request:', { message: message.substring(0, 50) + '...', historyLength: conversationHistory.length })
+    console.log('Processing LLM request with OpenRouter:', { message: message.substring(0, 50) + '...', historyLength: conversationHistory.length })
 
     // Prepare messages array with system prompt and limited conversation history
-    // Keep only last 2 messages to reduce processing time and stay within limits
-    const recentHistory = conversationHistory.slice(-2)
+    // Keep only last 4 messages to reduce processing time
+    const recentHistory = conversationHistory.slice(-4)
     
     const messages = [
       {
         role: 'system',
-        content: 'You are a helpful AI assistant. Give very concise responses in 1 sentence. Be brief and direct.'
+        content: `You are MJAK, an advanced voice-enabled AI assistant with comprehensive capabilities. You excel at:
+
+🎵 MUSIC & ENTERTAINMENT:
+- Spotify integration for music control and discovery
+- Audio processing and music recommendations
+
+🤖 AUTOMATION & CONTROL:
+- Computer task automation (opening apps, file management, system control)
+- Voice-activated commands for productivity
+- Screenshot capture and system interaction
+
+📄 DOCUMENT INTELLIGENCE:
+- PDF processing, text extraction, and document analysis
+- File summarization and content questions
+- Document formatting and organization
+
+🌍 LOCATION & CONTEXT AWARENESS:
+- Real-time location services and timezone detection
+- Personalized greetings based on location and time
+- Context-aware responses
+
+🗣️ VOICE INTERACTION:
+- Natural speech recognition and text-to-speech
+- Conversational AI with memory of context
+- Voice-first user experience
+
+Be conversational, helpful, and concise. Prioritize voice-friendly responses that work well with text-to-speech. Always acknowledge the user's context and provide actionable assistance. When possible, suggest voice commands they can use.`
       },
       ...recentHistory,
       {
@@ -48,61 +66,49 @@ serve(async (req) => {
       }
     ]
 
-    // Try each model until one works
-    let lastError = null
-    for (const model of FREE_MODELS) {
-      try {
-        console.log(`Trying model: ${model}`)
-        
-        const response = await fetch('https://api.together.xyz/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${TOGETHER_AI_API_KEY}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            model: model,
-            messages: messages,
-            max_tokens: 50, // Very small to avoid rate limits
-            temperature: 0.7,
-            top_p: 0.9,
-            stream: false,
-          }),
-        })
+    console.log('Sending request to OpenRouter with Google Gemini 2.0 Flash')
+    
+    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': 'https://mjak.ai',
+        'X-Title': 'MJAK AI Assistant',
+      },
+      body: JSON.stringify({
+        model: 'google/gemini-2.0-flash-001',
+        messages: messages,
+        max_tokens: 150, // Keep responses concise for voice
+        temperature: 0.7,
+        top_p: 0.9,
+        stream: false,
+      }),
+    })
 
-        if (response.ok) {
-          const result = await response.json()
-          const aiResponse = result.choices[0].message.content
-          console.log(`Success with model ${model}:`, aiResponse.substring(0, 50) + '...')
-          
-          return new Response(
-            JSON.stringify({ 
-              response: aiResponse,
-              updatedHistory: [
-                ...conversationHistory,
-                { role: 'user', content: message },
-                { role: 'assistant', content: aiResponse }
-              ]
-            }),
-            {
-              headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-            },
-          )
-        } else {
-          const errorText = await response.text()
-          console.log(`Model ${model} failed:`, errorText)
-          lastError = errorText
-          continue
-        }
-      } catch (error) {
-        console.log(`Model ${model} error:`, error)
-        lastError = error
-        continue
-      }
+    if (!response.ok) {
+      const errorText = await response.text()
+      console.error('OpenRouter API error:', errorText)
+      throw new Error(`OpenRouter API failed: ${response.status} ${errorText}`)
     }
 
-    // If all models failed, throw the last error
-    throw new Error(`All models failed. Last error: ${lastError}`)
+    const result = await response.json()
+    const aiResponse = result.choices[0].message.content
+    console.log('Success with OpenRouter Gemini:', aiResponse.substring(0, 50) + '...')
+    
+    return new Response(
+      JSON.stringify({ 
+        response: aiResponse,
+        updatedHistory: [
+          ...conversationHistory,
+          { role: 'user', content: message },
+          { role: 'assistant', content: aiResponse }
+        ]
+      }),
+      {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      },
+    )
 
   } catch (error) {
     console.error('LLM chat error:', error)
