@@ -41,31 +41,10 @@ const Index = () => {
   const [isAutomateConnected, setIsAutomateConnected] = useState(false);
   const [userName, setUserName] = useState('');
   const [lastUploadedDocument, setLastUploadedDocument] = useState<any>(null);
-  const [microphonePermission, setMicrophonePermission] = useState<'granted' | 'denied' | 'prompt'>('prompt');
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const { toast } = useToast();
   const [uploading, setUploading] = useState(false);
   const [fabOpen, setFabOpen] = useState(false);
-
-  // Check microphone permissions on component mount
-  useEffect(() => {
-    const checkMicrophonePermission = async () => {
-      try {
-        if (navigator.permissions) {
-          const permission = await navigator.permissions.query({ name: 'microphone' as PermissionName });
-          setMicrophonePermission(permission.state);
-          
-          permission.addEventListener('change', () => {
-            setMicrophonePermission(permission.state);
-          });
-        }
-      } catch (error) {
-        console.log('Permission API not available, will request on first use');
-      }
-    };
-
-    checkMicrophonePermission();
-  }, []);
 
   // Redirect to landing page if not logged in
   useEffect(() => {
@@ -175,93 +154,63 @@ const Index = () => {
 
     // Initialize speech recognition
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    recognitionRef.current = new SpeechRecognition();
     
-    const initializeRecognition = () => {
-      if (recognitionRef.current) {
-        recognitionRef.current.abort();
-        recognitionRef.current = null;
-      }
+    if (recognitionRef.current) {
+      recognitionRef.current.continuous = true;
+      recognitionRef.current.interimResults = true;
+      recognitionRef.current.lang = 'en-US';
 
-      recognitionRef.current = new SpeechRecognition();
-      
-      if (recognitionRef.current) {
-        recognitionRef.current.continuous = true;
-        recognitionRef.current.interimResults = true;
-        recognitionRef.current.lang = 'en-US';
+      recognitionRef.current.onresult = (event) => {
+        let finalTranscript = '';
+        let interimTranscript = '';
 
-        recognitionRef.current.onstart = () => {
-          console.log('Speech recognition started successfully');
-          setIsRecording(true);
-        };
-
-        recognitionRef.current.onresult = (event) => {
-          let finalTranscript = '';
-          let interimTranscript = '';
-
-          for (let i = event.resultIndex; i < event.results.length; i++) {
-            const transcript = event.results[i][0].transcript;
-            if (event.results[i].isFinal) {
-              finalTranscript += transcript;
-            } else {
-              interimTranscript += transcript;
-            }
-          }
-
-          if (finalTranscript) {
-            const newEntry: TranscriptEntry = {
-              id: Date.now().toString(),
-              text: finalTranscript.trim(),
-              timestamp: new Date(),
-              confidence: event.results[event.results.length - 1][0].confidence
-            };
-            
-            setTranscript(prev => [...prev, newEntry]);
-            setCurrentTranscript('');
-            
-            // Process through LLM and convert to speech
-            handleConversationalResponse(finalTranscript.trim());
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const transcript = event.results[i][0].transcript;
+          if (event.results[i].isFinal) {
+            finalTranscript += transcript;
           } else {
-            setCurrentTranscript(interimTranscript);
+            interimTranscript += transcript;
           }
-        };
+        }
 
-        recognitionRef.current.onerror = (event) => {
-          console.error('Speech recognition error:', event.error);
+        if (finalTranscript) {
+          const newEntry: TranscriptEntry = {
+            id: Date.now().toString(),
+            text: finalTranscript.trim(),
+            timestamp: new Date(),
+            confidence: event.results[event.results.length - 1][0].confidence
+          };
           
-          if (event.error === 'not-allowed') {
-            setMicrophonePermission('denied');
-            toast({
-              title: "Microphone Access Denied",
-              description: "Please allow microphone access in your browser settings and try again.",
-              variant: "destructive"
-            });
-          } else if (event.error === 'aborted') {
-            console.log('Speech recognition was aborted - this is normal when stopping');
-          } else {
-            toast({
-              title: "Recognition Error",
-              description: `Error: ${event.error}. Please try again.`,
-              variant: "destructive"
-            });
-          }
-          
-          setIsRecording(false);
-        };
-
-        recognitionRef.current.onend = () => {
-          console.log('Speech recognition ended');
-          setIsRecording(false);
+          setTranscript(prev => [...prev, newEntry]);
           setCurrentTranscript('');
-        };
-      }
-    };
+          
+          // Process through LLM and convert to speech
+          handleConversationalResponse(finalTranscript.trim());
+        } else {
+          setCurrentTranscript(interimTranscript);
+        }
+      };
 
-    initializeRecognition();
+      recognitionRef.current.onerror = (event) => {
+        console.error('Speech recognition error:', event.error);
+        toast({
+          title: "Recognition Error",
+          description: `Error: ${event.error}. Please try again.`,
+          variant: "destructive"
+        });
+        setIsRecording(false);
+      };
+
+      recognitionRef.current.onend = () => {
+        setIsRecording(false);
+        setCurrentTranscript('');
+      };
+    }
 
     return () => {
       if (recognitionRef.current) {
-        recognitionRef.current.abort();
-        recognitionRef.current = null;
+        recognitionRef.current.stop();
       }
     };
   }, [toast]);
@@ -368,45 +317,12 @@ const Index = () => {
     }
   };
 
-  const requestMicrophonePermission = async (): Promise<boolean> => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      stream.getTracks().forEach(track => track.stop()); // Stop the stream immediately
-      setMicrophonePermission('granted');
-      return true;
-    } catch (error) {
-      console.error('Microphone permission denied:', error);
-      setMicrophonePermission('denied');
-      toast({
-        title: "Microphone Access Required",
-        description: "Please allow microphone access to use voice features. Check your browser settings.",
-        variant: "destructive"
-      });
-      return false;
-    }
-  };
-
-  const startRecording = async () => {
+  const startRecording = () => {
     if (!recognitionRef.current) return;
     
-    // Check if we need to request microphone permission first
-    if (microphonePermission !== 'granted') {
-      const permissionGranted = await requestMicrophonePermission();
-      if (!permissionGranted) {
-        return;
-      }
-    }
-
-    // Prevent multiple simultaneous starts
-    if (isRecording) {
-      console.log('Already recording, ignoring start request');
-      return;
-    }
-    
     try {
-      console.log('Attempting to start speech recognition...');
       recognitionRef.current.start();
-      
+      setIsRecording(true);
       toast({
         title: "Recording Started",
         description: "Speak into your microphone. Your speech will be transcribed in real-time.",
@@ -422,11 +338,10 @@ const Index = () => {
   };
 
   const stopRecording = () => {
-    if (!recognitionRef.current || !isRecording) return;
+    if (!recognitionRef.current) return;
     
-    console.log('Stopping speech recognition...');
     recognitionRef.current.stop();
-    
+    setIsRecording(false);
     toast({
       title: "Recording Stopped",
       description: "Transcription session ended.",
@@ -591,35 +506,6 @@ const Index = () => {
             <p className="text-center text-muted-foreground">
               Speech recognition is not supported in this browser. Please use Chrome, Edge, or another Chromium-based browser.
             </p>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
-  // Show permission request screen if microphone access is denied
-  if (microphonePermission === 'denied') {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 flex items-center justify-center p-4">
-        <Card className="w-full max-w-md">
-          <CardHeader>
-            <CardTitle className="text-center text-orange-600">Microphone Access Required</CardTitle>
-          </CardHeader>
-          <CardContent className="text-center space-y-4">
-            <div className="w-16 h-16 mx-auto bg-orange-100 rounded-full flex items-center justify-center">
-              <Mic className="w-8 h-8 text-orange-600" />
-            </div>
-            <p className="text-muted-foreground">
-              This app needs microphone access to transcribe your speech. Please:
-            </p>
-            <ol className="text-left text-sm text-muted-foreground space-y-2">
-              <li>1. Click the microphone icon in your browser's address bar</li>
-              <li>2. Select "Allow" for microphone access</li>
-              <li>3. Refresh the page</li>
-            </ol>
-            <Button onClick={() => window.location.reload()} className="mt-4">
-              Refresh Page
-            </Button>
           </CardContent>
         </Card>
       </div>

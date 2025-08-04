@@ -163,36 +163,6 @@ export type Database = {
         }
         Relationships: []
       }
-      user_preferences: {
-        Row: {
-          ai_name: string
-          created_at: string
-          id: string
-          updated_at: string
-          user_id: string
-          voice_gender: string
-          voice_id: string
-        }
-        Insert: {
-          ai_name?: string
-          created_at?: string
-          id?: string
-          updated_at?: string
-          user_id: string
-          voice_gender?: string
-          voice_id?: string
-        }
-        Update: {
-          ai_name?: string
-          created_at?: string
-          id?: string
-          updated_at?: string
-          user_id?: string
-          voice_gender?: string
-          voice_id?: string
-        }
-        Relationships: []
-      }
     }
     Views: {
       [_ in never]: never
