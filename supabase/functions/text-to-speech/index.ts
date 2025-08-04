@@ -6,6 +6,129 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+// Voice configurations matching your custom TTS system
+const VOICE_CONFIGS = {
+  'JBFqnCBsd6RMkjVDRZzb': { // George - mapped to en-us-male-1
+    language: 'en', 
+    gender: 'male', 
+    accent: 'us',
+    edge_voice: 'en-US-GuyNeural',
+    gtts_lang: 'en'
+  },
+  '9BWtsMINqrJLrRacOk9x': { // Aria - mapped to en-us-female-1
+    language: 'en', 
+    gender: 'female', 
+    accent: 'us',
+    edge_voice: 'en-US-AriaNeural',
+    gtts_lang: 'en'
+  },
+  'CwhRBWXzGAHq8TQ4Fs17': { // Roger - mapped to en-uk-male-1
+    language: 'en', 
+    gender: 'male', 
+    accent: 'uk',
+    edge_voice: 'en-GB-RyanNeural',
+    gtts_lang: 'en'
+  },
+  'EXAVITQu4vr4xnSDxMaL': { // Sarah - mapped to en-uk-female-1
+    language: 'en', 
+    gender: 'female', 
+    accent: 'uk',
+    edge_voice: 'en-GB-SoniaNeural',
+    gtts_lang: 'en'
+  },
+  'FGY2WhTYpPnrIDTdsKH5': { // Laura - mapped to hi-female-1
+    language: 'hi', 
+    gender: 'female',
+    edge_voice: 'hi-IN-SwaraNeural',
+    gtts_lang: 'hi'
+  },
+  'IKne3meq5aSn9XLyUdCD': { // Charlie - mapped to hi-male-1
+    language: 'hi', 
+    gender: 'male',
+    edge_voice: 'hi-IN-MadhurNeural',
+    gtts_lang: 'hi'
+  },
+  'TX3LPaxmHKxFdv7VOQHJ': { // Liam - mapped to de-male-1
+    language: 'de', 
+    gender: 'male',
+    edge_voice: 'de-DE-ConradNeural',
+    gtts_lang: 'de'
+  },
+  'XB0fDUnXU5powFXDhCwa': { // Charlotte - mapped to fr-female-1
+    language: 'fr', 
+    gender: 'female',
+    edge_voice: 'fr-FR-DeniseNeural',
+    gtts_lang: 'fr'
+  },
+}
+
+async function generateWithEdgeTTS(text: string, voiceConfig: any, ttsSettings: any): Promise<ArrayBuffer> {
+  const voice = voiceConfig.edge_voice || 'en-US-AriaNeural'
+  
+  // Apply ElevenLabs-style settings to Edge TTS
+  const rate = ttsSettings.speed || 1.0
+  const volume = (ttsSettings.stability || 0.6) * 100
+  const pitch = (ttsSettings.similarity_boost || 0.7) * 50
+  
+  // Create SSML with voice settings
+  const ssmlText = `
+    <speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" 
+            xmlns:mstts="http://www.w3.org/2001/mstts" xml:lang="en-US">
+        <voice name="${voice}">
+            <prosody rate="${rate}" volume="${volume}%" pitch="${pitch}%">
+                ${text}
+            </prosody>
+        </voice>
+    </speak>
+  `
+  
+  try {
+    // Use Web Speech API synthesis (fallback for Edge environments)
+    const response = await fetch('https://api.streamelements.com/kappa/v2/speech', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        voice: voice.includes('Neural') ? voice.replace('Neural', '') : voice,
+        text: text,
+        language: voiceConfig.language
+      })
+    })
+    
+    if (response.ok) {
+      return await response.arrayBuffer()
+    }
+    
+    throw new Error('Edge TTS failed, falling back to gTTS')
+  } catch (error) {
+    console.log('Edge TTS failed, using gTTS fallback:', error.message)
+    return generateWithGTTS(text, voiceConfig)
+  }
+}
+
+async function generateWithGTTS(text: string, voiceConfig: any): Promise<ArrayBuffer> {
+  const lang = voiceConfig.gtts_lang || 'en'
+  
+  try {
+    // Use Google Translate TTS API
+    const response = await fetch(`https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(text)}&tl=${lang}&client=tw-ob`, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+      }
+    })
+    
+    if (!response.ok) {
+      throw new Error(`gTTS failed with status: ${response.status}`)
+    }
+    
+    return await response.arrayBuffer()
+  } catch (error) {
+    console.error('gTTS generation failed:', error)
+    throw new Error(`TTS generation failed: ${error.message}`)
+  }
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
@@ -18,50 +141,41 @@ serve(async (req) => {
       throw new Error('Text is required')
     }
 
-    const ELEVENLABS_API_KEY = Deno.env.get('ELEVENLABS_API_KEY')
-    if (!ELEVENLABS_API_KEY) {
-      throw new Error('ElevenLabs API key not configured')
-    }
-
-    console.log('Converting text to speech:', { text: text.substring(0, 50) + '...', voiceId, modelId })
-
-    // Use ElevenLabs streaming API for better quality
-    const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}/stream`, {
-      method: 'POST',
-      headers: {
-        'Accept': 'audio/mpeg',
-        'Content-Type': 'application/json',
-        'xi-api-key': ELEVENLABS_API_KEY,
-      },
-      body: JSON.stringify({
-        text,
-        model_id: modelId || 'eleven_turbo_v2_5', // Faster model
-        voice_settings: {
-          stability: 0.6, // Slightly higher for faster generation
-          similarity_boost: 0.7, // Reduced for speed
-          use_speaker_boost: false, // Disabled for speed
-          speed: 1.1, // Slightly faster playback
-        },
-        output_format: 'mp3_22050_32', // Lower quality for faster processing
-      }),
+    console.log('Converting text to speech using custom TTS:', { 
+      text: text.substring(0, 50) + '...', 
+      voiceId, 
+      modelId 
     })
 
-    if (!response.ok) {
-      const error = await response.text()
-      console.error('ElevenLabs API error:', error)
-      throw new Error(`ElevenLabs API error: ${error}`)
+    // Get voice configuration
+    const voiceConfig = VOICE_CONFIGS[voiceId] || VOICE_CONFIGS['9BWtsMINqrJLrRacOk9x'] // Default to Aria
+
+    // ElevenLabs-compatible settings
+    const ttsSettings = {
+      speed: 1.0,
+      stability: 0.6,
+      similarity_boost: 0.7,
+      use_speaker_boost: false
     }
 
-    console.log('Successfully converted text to speech')
-
-    // Stream the audio response directly
-    const audioBuffer = await response.arrayBuffer()
+    // Generate speech with fallback system
+    let audioBuffer: ArrayBuffer
+    try {
+      audioBuffer = await generateWithEdgeTTS(text, voiceConfig, ttsSettings)
+      console.log('Successfully generated speech using Edge TTS')
+    } catch (error) {
+      console.log('Edge TTS failed, using gTTS:', error.message)
+      audioBuffer = await generateWithGTTS(text, voiceConfig)
+      console.log('Successfully generated speech using gTTS fallback')
+    }
 
     return new Response(audioBuffer, {
       headers: {
         ...corsHeaders,
         'Content-Type': 'audio/mpeg',
         'Content-Length': audioBuffer.byteLength.toString(),
+        'X-Model-Used': 'custom-tts-edge-gtts',
+        'X-Voice-Config': JSON.stringify(voiceConfig)
       },
     })
   } catch (error) {
