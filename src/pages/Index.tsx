@@ -17,6 +17,7 @@ import DocumentUpload from '@/components/DocumentUpload';
 import spotifyIcon from '@/assets/spotify-icon.svg';
 import AutomatePowerSwitch from '../components/AutomatePowerSwitch';
 import AnimatedCallButton from '../components/AnimatedCallButton';
+import TTSTestPanel from "@/components/TTSTestPanel";
 
 interface TranscriptEntry {
   id: string;
@@ -513,7 +514,7 @@ const Index = () => {
   }
 
   return (
-    <div className="min-h-screen" style={{ background: 'rgb(33,33,33)' }}>
+    <div className="min-h-screen bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-100">
       <div className="max-w-4xl mx-auto space-y-6">
         {/* Voice Settings */}
         <Card className="border-0 shadow-lg bg-white/80 backdrop-blur-sm">
@@ -802,6 +803,11 @@ const Index = () => {
         <div className="text-center text-sm text-muted-foreground">
           <p>Built with Web Speech API & ElevenLabs • Works best in Chrome and Edge browsers</p>
         </div>
+      </div>
+
+      {/* Add TTS Test Panel below the call button */}
+      <div className="container mx-auto px-4 py-8">
+        <TTSTestPanel />
       </div>
     </div>
   );
