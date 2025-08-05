@@ -7,7 +7,8 @@ import { Switch } from '@/components/ui/switch';
 import { Mic, MicOff, Download, Trash2, Volume2, VolumeX, LogOut, Bot } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
-import { textToSpeechService, AVAILABLE_VOICES } from '@/services/textToSpeechService';
+import { textToSpeechService } from '@/services/textToSpeechService';
+import { customTTSService, AVAILABLE_VOICES } from '@/services/customTTSService';
 import { llmService, ConversationMessage } from '@/services/llmService';
 import { actionRouter } from '@/services/actionRouter';
 import { spotifyService } from '@/services/spotifyService';
@@ -17,7 +18,6 @@ import DocumentUpload from '@/components/DocumentUpload';
 import spotifyIcon from '@/assets/spotify-icon.svg';
 import AutomatePowerSwitch from '../components/AutomatePowerSwitch';
 import AnimatedCallButton from '../components/AnimatedCallButton';
-import TTSTestPanel from "@/components/TTSTestPanel";
 
 interface TranscriptEntry {
   id: string;
@@ -32,7 +32,7 @@ const Index = () => {
   const [transcript, setTranscript] = useState<TranscriptEntry[]>([]);
   const [currentTranscript, setCurrentTranscript] = useState('');
   const [isSupported, setIsSupported] = useState(true);
-  const [selectedVoice, setSelectedVoice] = useState('JBFqnCBsd6RMkjVDRZzb');
+  const [selectedVoice, setSelectedVoice] = useState('en-us-female-1');
   const [isPlayingTTS, setIsPlayingTTS] = useState(false);
   const [conversationHistory, setConversationHistory] = useState<ConversationMessage[]>([]);
   const [isProcessingLLM, setIsProcessingLLM] = useState(false);
@@ -204,8 +204,24 @@ const Index = () => {
       };
 
       recognitionRef.current.onend = () => {
-        setIsRecording(false);
-        setCurrentTranscript('');
+        // Only stop recording if user explicitly clicked "End Call"
+        // Otherwise, restart the recognition automatically
+        if (isRecording) {
+          // Restart recognition automatically
+          setTimeout(() => {
+            if (recognitionRef.current && isRecording) {
+              try {
+                recognitionRef.current.start();
+              } catch (error) {
+                console.error('Error restarting recognition:', error);
+                setIsRecording(false);
+                setCurrentTranscript('');
+              }
+            }
+          }, 100);
+        } else {
+          setCurrentTranscript('');
+        }
       };
     }
 
@@ -244,11 +260,6 @@ const Index = () => {
 
       // Handle action results
       if (actionResult) {
-        if (actionResult.requiresTTS && actionResult.message) {
-          setIsProcessingLLM(false);
-          await handleTextToSpeech(actionResult.message);
-        }
-
         // Update Spotify connection status if needed
         if (intent.intent === 'connect_spotify' && actionResult.success) {
           setIsSpotifyConnected(true);
@@ -261,10 +272,20 @@ const Index = () => {
           { role: 'assistant' as const, content: actionResult.message }
         ];
         setConversationHistory(newHistory);
+        
+        // Speak the response if TTS is required
+        if (actionResult.requiresTTS && actionResult.message) {
+          setIsProcessingLLM(false);
+          await handleTextToSpeech(actionResult.message);
+        }
       } else if (llmResponse) {
-        // Handle normal conversation
-        const { updatedHistory } = await llmService.generateResponse(userInput, conversationHistory);
-        setConversationHistory(updatedHistory);
+        // Handle normal conversation - use the llmResponse from actionRouter
+        const newHistory = [
+          ...conversationHistory,
+          { role: 'user' as const, content: userInput },
+          { role: 'assistant' as const, content: llmResponse }
+        ];
+        setConversationHistory(newHistory);
         setIsProcessingLLM(false);
         await handleTextToSpeech(llmResponse);
       }
@@ -285,8 +306,7 @@ const Index = () => {
 
     setIsPlayingTTS(true);
     try {
-      const audioBuffer = await textToSpeechService.convertTextToSpeech(text, selectedVoice);
-      await textToSpeechService.playAudio(audioBuffer);
+      await textToSpeechService.speak(text, selectedVoice);
     } catch (error) {
       console.error('Text-to-speech error:', error);
       toast({
@@ -322,14 +342,15 @@ const Index = () => {
     if (!recognitionRef.current) return;
     
     try {
-      recognitionRef.current.start();
       setIsRecording(true);
+      recognitionRef.current.start();
       toast({
         title: "Recording Started",
-        description: "Speak into your microphone. Your speech will be transcribed in real-time.",
+        description: "Speak into your microphone. Your speech will be transcribed in real-time. Click 'End Call' to stop.",
       });
     } catch (error) {
       console.error('Error starting recognition:', error);
+      setIsRecording(false);
       toast({
         title: "Error",
         description: "Failed to start recording. Please try again.",
@@ -341,8 +362,10 @@ const Index = () => {
   const stopRecording = () => {
     if (!recognitionRef.current) return;
     
-    recognitionRef.current.stop();
+    // Set recording to false first so onend doesn't restart
     setIsRecording(false);
+    recognitionRef.current.stop();
+    
     toast({
       title: "Recording Stopped",
       description: "Transcription session ended.",
@@ -514,7 +537,7 @@ const Index = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-100">
+    <div className="min-h-screen" style={{ background: 'rgb(33,33,33)' }}>
       <div className="max-w-4xl mx-auto space-y-6">
         {/* Voice Settings */}
         <Card className="border-0 shadow-lg bg-white/80 backdrop-blur-sm">
@@ -636,71 +659,7 @@ const Index = () => {
           </Card>
         )}
 
-        {/* Transcript History */}
-        <Card className="border-0 shadow-lg bg-white/80 backdrop-blur-sm">
-          <CardHeader>
-            <CardTitle className="flex items-center justify-between">
-              <span>Transcript History</span>
-              {transcript.length > 0 && (
-                <Badge variant="secondary" className="bg-blue-100 text-blue-700">
-                  {transcript.length} entries
-                </Badge>
-              )}
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {transcript.length === 0 ? (
-              <div className="text-center py-12">
-                <Mic className="w-12 h-12 mx-auto text-muted-foreground mb-4 opacity-50" />
-                <p className="text-muted-foreground text-lg">No transcripts yet</p>
-                <p className="text-sm text-muted-foreground mt-2">
-                  Click "Start Recording" to begin transcribing your speech
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-4 max-h-96 overflow-y-auto">
-                {transcript.map((entry, index) => (
-                  <div
-                    key={entry.id}
-                    className="p-4 bg-gradient-to-r from-gray-50 to-blue-50 rounded-lg border border-gray-200 hover:shadow-md transition-shadow duration-200"
-                  >
-                    <div className="flex items-start justify-between mb-2">
-                      <div className="flex items-center gap-2">
-                        <Badge variant="outline" className="text-xs">
-                          #{index + 1}
-                        </Badge>
-                        {textToSpeechService.isConfigured() && (
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => handleTextToSpeech(entry.text)}
-                            disabled={isPlayingTTS}
-                            className="h-6 px-2 text-xs"
-                          >
-                            {isPlayingTTS ? (
-                              <VolumeX className="w-3 h-3" />
-                            ) : (
-                              <Volume2 className="w-3 h-3" />
-                            )}
-                          </Button>
-                        )}
-                      </div>
-                      <div className="text-xs text-muted-foreground flex items-center gap-2">
-                        <span>{formatTimestamp(entry.timestamp)}</span>
-                        {entry.confidence && (
-                          <Badge variant="secondary" className="text-xs">
-                            {Math.round(entry.confidence * 100)}% confidence
-                          </Badge>
-                        )}
-                      </div>
-                    </div>
-                    <p className="text-gray-800 leading-relaxed">{entry.text}</p>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
+
 
         {/* Document Upload */}
         <DocumentUpload onDocumentProcessed={handleDocumentUpload} />
@@ -803,11 +762,6 @@ const Index = () => {
         <div className="text-center text-sm text-muted-foreground">
           <p>Built with Web Speech API & ElevenLabs • Works best in Chrome and Edge browsers</p>
         </div>
-      </div>
-
-      {/* Add TTS Test Panel below the call button */}
-      <div className="container mx-auto px-4 py-8">
-        <TTSTestPanel />
       </div>
     </div>
   );
