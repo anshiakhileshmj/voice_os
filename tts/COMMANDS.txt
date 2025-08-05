@@ -1,0 +1,37 @@
+🎤 TTS SERVER COMMANDS
+=======================
+
+📦 INSTALL DEPENDENCIES:
+pip install -r requirements-tts.txt
+
+🚀 START TTS SERVER:
+python tts_api.py
+
+🔍 TEST TTS SYSTEM:
+python test_enhanced_tts.py
+
+🌐 HEALTH CHECK:
+curl http://localhost:8001/api/tts/health
+
+🎵 TEST TTS GENERATION:
+curl -X POST http://localhost:8001/api/tts/generate -H "Content-Type: application/json" -d "{\"text\":\"Hello\",\"voice_id\":\"en-us-female-1\",\"language\":\"en\",\"use_fallback\":true,\"speed\":1.0,\"stability\":0.6,\"similarity_boost\":0.7,\"use_speaker_boost\":false}"
+
+📋 GET AVAILABLE VOICES:
+curl http://localhost:8001/api/tts/voices
+
+⚡ KILL PROCESS ON PORT 8001:
+netstat -ano | findstr :8001
+taskkill /PID <PID> /F
+
+🔄 RESTART TTS SERVER:
+# Stop current server (Ctrl+C)
+# Then run: python tts_api.py
+
+📊 CHECK LOGS:
+# Look for "Edge TTS successful on attempt 1" in console output
+
+✅ SUCCESS INDICATORS:
+- Server running on http://localhost:8001
+- "Edge TTS successful on attempt 1" in logs
+- HTTP 200 responses from API
+- Audio playback working in frontend 
