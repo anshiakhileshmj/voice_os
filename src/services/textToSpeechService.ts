@@ -1,105 +1,176 @@
 
-import { supabase } from '@/integrations/supabase/client';
+import { customTTSService, convertTextToSpeech, AVAILABLE_VOICES, Voice } from './customTTSService';
 
-export interface VoiceOption {
-  id: string;
-  name: string;
+// Enhanced Text-to-Speech Service
+// Wrapper around custom TTS with ElevenLabs-style settings
+
+export interface VoiceSettings {
+  speed?: number;
+  stability?: number;
+  similarity_boost?: number;
+  use_speaker_boost?: boolean;
 }
 
-export const AVAILABLE_VOICES: VoiceOption[] = [
-  { id: 'JBFqnCBsd6RMkjVDRZzb', name: 'George' },
-  { id: '9BWtsMINqrJLrRacOk9x', name: 'Aria' },
-  { id: 'CwhRBWXzGAHq8TQ4Fs17', name: 'Roger' },
-  { id: 'EXAVITQu4vr4xnSDxMaL', name: 'Sarah' },
-  { id: 'FGY2WhTYpPnrIDTdsKH5', name: 'Laura' },
-  { id: 'IKne3meq5aSn9XLyUdCD', name: 'Charlie' },
-  { id: 'TX3LPaxmHKxFdv7VOQHJ', name: 'Liam' },
-  { id: 'XB0fDUnXU5powFXDhCwa', name: 'Charlotte' },
-];
+class TextToSpeechService {
+  private audioElement: HTMLAudioElement | null = null;
+  private isPlaying = false;
 
-export class TextToSpeechService {
-  async convertTextToSpeech(
-    text: string, 
-    voiceId: string = 'JBFqnCBsd6RMkjVDRZzb',
-    modelId: string = 'eleven_multilingual_v2'
-  ): Promise<ArrayBuffer> {
-    if (!text.trim()) {
-      throw new Error('Text cannot be empty.');
-    }
-
+  /**
+   * Speak text with enhanced voice settings
+   */
+  async speak(
+    text: string,
+    voiceId: string = 'en-us-female-1',
+    voiceSettings?: VoiceSettings
+  ): Promise<void> {
     try {
-      console.log('Converting text to speech:', text.substring(0, 50) + '...');
+      // Stop any currently playing audio
+      this.stop();
+
+      // Convert text to speech with ElevenLabs-style settings
+      const { audioBlob, modelUsed } = await convertTextToSpeech(
+        text,
+        voiceId,
+        voiceSettings || this.getDefaultVoiceSettings()
+      );
+
+      // Create audio element and play
+      const audioUrl = URL.createObjectURL(audioBlob);
+      this.audioElement = new Audio(audioUrl);
       
-      // Get the current session to include auth header
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        throw new Error('User not authenticated');
-      }
+      this.audioElement.onended = () => {
+        this.isPlaying = false;
+        URL.revokeObjectURL(audioUrl);
+      };
 
-      // Use direct fetch with proper headers for binary response
-      const response = await fetch('https://uasluhbtcpuigwkuslum.supabase.co/functions/v1/text-to-speech', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.access_token}`,
-          'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVhc2x1aGJ0Y3B1aWd3a3VzbHVtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTEzNDkwOTUsImV4cCI6MjA2NjkyNTA5NX0.hmdgaWm1-Xso9ZIQHiVSWcuPEfu4qmat-YR1qoYAFAs',
-        },
-        body: JSON.stringify({
-          text: text.trim(),
-          voiceId,
-          modelId,
-        }),
-      });
+      this.audioElement.onerror = (error) => {
+        console.error('Audio playback error:', error);
+        this.isPlaying = false;
+        URL.revokeObjectURL(audioUrl);
+      };
 
-      if (!response.ok) {
-        const error = await response.json().catch(() => ({ error: 'Failed to parse error response' }));
-        throw new Error(error.error || 'Failed to convert text to speech');
-      }
+      this.isPlaying = true;
+      await this.audioElement.play();
 
-      // Get the audio data as ArrayBuffer
-      const arrayBuffer = await response.arrayBuffer();
-      
-      if (!arrayBuffer || arrayBuffer.byteLength === 0) {
-        throw new Error('No audio data received from text-to-speech service');
-      }
+      console.log(`TTS successful using ${modelUsed} with settings:`, voiceSettings);
 
-      console.log('Successfully received audio data:', arrayBuffer.byteLength, 'bytes');
-      return arrayBuffer;
     } catch (error) {
-      console.error('Text-to-speech conversion error:', error);
-      if (error instanceof Error) {
-        throw new Error(`Failed to convert text to speech: ${error.message}`);
-      }
-      throw new Error('Failed to convert text to speech: Unknown error');
+      console.error('TTS error:', error);
+      throw new Error(`Failed to speak text: ${error.message}`);
     }
   }
 
-  async playAudio(audioBuffer: ArrayBuffer): Promise<void> {
-    try {
-      const blob = new Blob([audioBuffer], { type: 'audio/mpeg' });
-      const url = URL.createObjectURL(blob);
-      const audio = new Audio(url);
-      
-      return new Promise((resolve, reject) => {
-        audio.onended = () => {
-          URL.revokeObjectURL(url);
-          resolve();
-        };
-        audio.onerror = () => {
-          URL.revokeObjectURL(url);
-          reject(new Error('Audio playback failed'));
-        };
-        audio.play().catch(reject);
-      });
-    } catch (error) {
-      console.error('Audio playback error:', error);
-      throw new Error('Failed to play audio');
+  /**
+   * Stop current audio playback
+   */
+  stop(): void {
+    if (this.audioElement && this.isPlaying) {
+      this.audioElement.pause();
+      this.audioElement.currentTime = 0;
+      this.isPlaying = false;
     }
   }
 
-  isConfigured(): boolean {
-    return true; // Always configured since we're using edge functions
+  /**
+   * Check if audio is currently playing
+   */
+  isAudioPlaying(): boolean {
+    return this.isPlaying;
+  }
+
+  /**
+   * Get available voices
+   */
+  async getAvailableVoices(): Promise<Voice[]> {
+    return customTTSService.getAvailableVoices();
+  }
+
+  /**
+   * Get voices by language
+   */
+  getVoicesByLanguage(language: string): Voice[] {
+    return customTTSService.getVoicesByLanguage(language);
+  }
+
+  /**
+   * Get voices by gender
+   */
+  getVoicesByGender(gender: string): Voice[] {
+    return customTTSService.getVoicesByGender(gender);
+  }
+
+  /**
+   * Check TTS service health
+   */
+  async checkHealth(): Promise<{ healthy: boolean; details: any }> {
+    return customTTSService.checkHealth();
+  }
+
+  /**
+   * Test TTS functionality
+   */
+  async testTTS(voiceId: string = 'en-us-female-1'): Promise<boolean> {
+    try {
+      await this.speak('Hello, this is a test of the text-to-speech system.', voiceId);
+      return true;
+    } catch (error) {
+      console.error('TTS test failed:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Get default ElevenLabs-style voice settings
+   */
+  getDefaultVoiceSettings(): VoiceSettings {
+    return {
+      speed: 1.0,
+      stability: 0.6,
+      similarity_boost: 0.7,
+      use_speaker_boost: false
+    };
+  }
+
+  /**
+   * Get enhanced voice settings for better quality
+   */
+  getEnhancedVoiceSettings(): VoiceSettings {
+    return {
+      speed: 1.0,
+      stability: 0.8, // Higher stability for better quality
+      similarity_boost: 0.9, // Higher similarity for more natural voice
+      use_speaker_boost: true // Enable speaker boost for clarity
+    };
+  }
+
+  /**
+   * Get fast voice settings for quick responses
+   */
+  getFastVoiceSettings(): VoiceSettings {
+    return {
+      speed: 1.2, // Slightly faster
+      stability: 0.5, // Lower stability for speed
+      similarity_boost: 0.6, // Lower similarity for speed
+      use_speaker_boost: false // Disable for speed
+    };
+  }
+
+  /**
+   * Get voice settings optimized for conversation
+   */
+  getConversationVoiceSettings(): VoiceSettings {
+    return {
+      speed: 1.0,
+      stability: 0.7, // Balanced stability
+      similarity_boost: 0.8, // Good similarity
+      use_speaker_boost: true // Enable for clarity
+    };
   }
 }
 
+// Export singleton instance
 export const textToSpeechService = new TextToSpeechService();
+
+// Export for backward compatibility
+export { AVAILABLE_VOICES };
+export type { Voice };
