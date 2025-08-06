@@ -1,6 +1,7 @@
 
 import { streamingTTSService } from './streamingTTSService';
 import { languageAwareLLMService } from './languageAwareLLMService';
+import { streamingLLMService } from './streamingLLMService';
 import { spotifyService } from './spotifyService';
 import { automateService } from './automateService';
 
