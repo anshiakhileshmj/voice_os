@@ -23,12 +23,16 @@ export class SimplifiedActionRouter {
   }
 
   setSelectedVoice(voiceId: string) {
+    console.log('SimplifiedActionRouter: setSelectedVoice called with:', voiceId);
+    console.log('SimplifiedActionRouter: Previous voice was:', this.selectedVoiceId);
     this.selectedVoiceId = voiceId;
     console.log('SimplifiedActionRouter: Voice changed to:', voiceId);
     console.log('SimplifiedActionRouter: Language for this voice:', streamingTTSService.getLanguageForVoice(voiceId));
+    console.log('SimplifiedActionRouter: Current selectedVoiceId is now:', this.selectedVoiceId);
   }
 
   getSelectedVoice(): string {
+    console.log('SimplifiedActionRouter: getSelectedVoice returning:', this.selectedVoiceId);
     return this.selectedVoiceId;
   }
 
@@ -38,7 +42,9 @@ export class SimplifiedActionRouter {
   ): Promise<void> {
     if (!userInput.trim()) return;
 
+    console.log('SimplifiedActionRouter: processConversation called');
     console.log('SimplifiedActionRouter: Processing conversation with voice:', this.selectedVoiceId);
+    console.log('SimplifiedActionRouter: Voice language:', streamingTTSService.getLanguageForVoice(this.selectedVoiceId));
 
     try {
       // Quick check for specific actions before going to LLM
@@ -53,6 +59,8 @@ export class SimplifiedActionRouter {
 
       // Reset current response
       this.currentResponse = '';
+
+      console.log('SimplifiedActionRouter: About to call languageAwareLLMService with voice:', this.selectedVoiceId);
 
       // Stream language-aware LLM response
       await languageAwareLLMService.generateLanguageAwareResponse(userInput, {
@@ -140,7 +148,9 @@ export class SimplifiedActionRouter {
   }
 
   private async handleTTS(text: string, callbacks: ConversationCallbacks) {
+    console.log('SimplifiedActionRouter: handleTTS called');
     console.log('SimplifiedActionRouter: Starting TTS with voice:', this.selectedVoiceId);
+    console.log('SimplifiedActionRouter: TTS voice language:', streamingTTSService.getLanguageForVoice(this.selectedVoiceId));
     callbacks.onTTSStart();
     
     await streamingTTSService.convertStreamingTextToSpeech(text, {

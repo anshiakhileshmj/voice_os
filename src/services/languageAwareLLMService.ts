@@ -16,16 +16,22 @@ class LanguageAwareLLMService {
   ): Promise<void> {
     const { voiceId = 'english_us_male', onChunk, onComplete, onError } = options;
     
+    console.log('LanguageAwareLLMService: generateLanguageAwareResponse called');
+    console.log('LanguageAwareLLMService: Received voiceId parameter:', voiceId);
+    
     // Get language code from voice selection
     const languageCode = VOICE_LANGUAGE_MAP[voiceId] || 'en';
     
     console.log('LanguageAwareLLMService: Processing with voice:', voiceId);
     console.log('LanguageAwareLLMService: Language code:', languageCode);
+    console.log('LanguageAwareLLMService: VOICE_LANGUAGE_MAP lookup result:', VOICE_LANGUAGE_MAP[voiceId]);
     
     // Create language-specific system prompt
     const languagePrompt = this.getLanguagePrompt(languageCode);
     const enhancedInput = `${languagePrompt}\n\nUser: ${userInput}`;
 
+    console.log('LanguageAwareLLMService: Generated language prompt:', languagePrompt);
+    console.log('LanguageAwareLLMService: Enhanced input:', enhancedInput.substring(0, 100) + '...');
     console.log('Generating response in language:', languageCode, 'for voice:', voiceId);
 
     try {
