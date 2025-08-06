@@ -1,4 +1,5 @@
 
+import franc from 'franc';
 import { VOICE_LANGUAGE_MAP, AVAILABLE_VOICES } from './textToSpeechService';
 
 export interface DetectedLanguage {
@@ -7,72 +8,63 @@ export interface DetectedLanguage {
   suggestedVoiceId: string;
 }
 
+// Map franc language codes to our supported languages
+const FRANC_TO_OUR_LANG_MAP: Record<string, string> = {
+  'eng': 'en',
+  'hin': 'hi',
+  'ben': 'bn',
+  'guj': 'gu',
+  'kan': 'kn',
+  'mal': 'ml',
+  'mar': 'mr',
+  'pan': 'pa',
+  'tam': 'ta',
+  'tel': 'te',
+  'deu': 'de',
+  'fra': 'fr',
+  'spa': 'es',
+  'ita': 'it',
+  'por': 'pt',
+  'rus': 'ru',
+  'jpn': 'ja'
+};
+
 class LanguageDetectionService {
-  private languagePatterns: Record<string, RegExp[]> = {
-    'hi': [
-      /[\u0900-\u097F]/g, // Devanagari script
-      /\b(नमस्ते|धन्यवाद|कैसे|क्या|हां|नहीं)\b/gi
-    ],
-    'bn': [
-      /[\u0980-\u09FF]/g, // Bengali script
-      /\b(নমস্কার|ধন্যবাদ|কেমন|কি|হ্যাঁ|না)\b/gi
-    ],
-    'fr': [
-      /\b(bonjour|merci|comment|que|oui|non|vive|la|france)\b/gi,
-      /[àâäçéèêëïîôùûüÿ]/g
-    ],
-    'de': [
-      /\b(hallo|danke|wie|was|ja|nein|gut|tag)\b/gi,
-      /[äöüß]/g
-    ],
-    'es': [
-      /\b(hola|gracias|cómo|qué|sí|no|buenos|días)\b/gi,
-      /[áéíóúñ]/g
-    ],
-    'it': [
-      /\b(ciao|grazie|come|che|sì|no|buon|giorno)\b/gi,
-      /[àèéìíîòóù]/g
-    ],
-    'ta': [
-      /[\u0B80-\u0BFF]/g, // Tamil script
-      /\b(வணக்கம்|நன்றி|எப்படி|என்ன|ஆம்|இல்லை)\b/gi
-    ],
-    'te': [
-      /[\u0C00-\u0C7F]/g, // Telugu script
-      /\b(నమస్కారం|ధన్యవాదాలు|ఎలా|ఏమిటి|అవును|కాదు)\b/gi
-    ],
-    'ru': [
-      /[\u0400-\u04FF]/g, // Cyrillic script
-      /\b(привет|спасибо|как|что|да|нет)\b/gi
-    ],
-    'ja': [
-      /[\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF]/g, // Hiragana, Katakana, Kanji
-      /\b(こんにちは|ありがとう|どう|何|はい|いいえ)\b/gi
-    ]
-  };
+  private isDetectionEnabled = false;
+
+  enableDetection() {
+    this.isDetectionEnabled = true;
+    console.log('LanguageDetectionService: Auto-detection enabled');
+  }
+
+  disableDetection() {
+    this.isDetectionEnabled = false;
+    console.log('LanguageDetectionService: Auto-detection disabled');
+  }
 
   detectLanguage(text: string): DetectedLanguage {
     console.log('LanguageDetectionService: Detecting language for:', text.substring(0, 50));
     
-    const scores: Record<string, number> = {};
-    
-    // Check each language pattern
-    Object.entries(this.languagePatterns).forEach(([lang, patterns]) => {
-      let score = 0;
-      patterns.forEach(pattern => {
-        const matches = text.match(pattern);
-        if (matches) {
-          score += matches.length;
-        }
-      });
-      if (score > 0) {
-        scores[lang] = score;
-      }
-    });
+    if (!this.isDetectionEnabled) {
+      return {
+        language: 'en',
+        confidence: 0,
+        suggestedVoiceId: 'english_us_male'
+      };
+    }
 
-    // Find the language with highest score
-    const detectedLang = Object.entries(scores).reduce((prev, curr) => 
-      curr[1] > prev[1] ? curr : prev, ['en', 0])[0];
+    // Use franc for language detection
+    const francResult = franc(text);
+    console.log('LanguageDetectionService: Franc detected:', francResult);
+    
+    // Map franc result to our language codes
+    const detectedLang = FRANC_TO_OUR_LANG_MAP[francResult] || 'en';
+    
+    // Calculate confidence based on text length and franc certainty
+    let confidence = text.length > 10 ? 0.8 : 0.5;
+    if (francResult === 'und') { // undefined language
+      confidence = 0;
+    }
 
     // Find appropriate voice for detected language
     const suggestedVoice = AVAILABLE_VOICES.find(voice => 
@@ -81,19 +73,23 @@ class LanguageDetectionService {
 
     const result: DetectedLanguage = {
       language: detectedLang,
-      confidence: scores[detectedLang] || 0,
+      confidence,
       suggestedVoiceId: suggestedVoice?.id || 'english_us_male'
     };
 
-    console.log('LanguageDetectionService: Detected:', result);
+    console.log('LanguageDetectionService: Final detection result:', result);
     return result;
   }
 
   autoSelectVoiceForText(text: string): string {
+    if (!this.isDetectionEnabled) {
+      return 'english_us_male';
+    }
+
     const detected = this.detectLanguage(text);
     
     // Only auto-switch if we have reasonable confidence
-    if (detected.confidence > 0) {
+    if (detected.confidence > 0.6) {
       console.log('LanguageDetectionService: Auto-selecting voice:', detected.suggestedVoiceId);
       return detected.suggestedVoiceId;
     }

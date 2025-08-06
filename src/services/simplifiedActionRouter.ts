@@ -16,8 +16,8 @@ export interface ConversationCallbacks {
 export class SimplifiedActionRouter {
   private isAutomateEnabled = false;
   private currentResponse = '';
-  private selectedVoiceId = 'english_us_male'; // Default voice
-  private autoDetectLanguage = true; // Enable auto language detection
+  private selectedVoiceId = 'english_us_male';
+  private autoDetectLanguage = false;
 
   setAutomateEnabled(enabled: boolean) {
     this.isAutomateEnabled = enabled;
@@ -25,13 +25,13 @@ export class SimplifiedActionRouter {
 
   setSelectedVoice(voiceId: string) {
     this.selectedVoiceId = voiceId;
-    console.log('SimplifiedActionRouter: Voice manually changed to:', voiceId);
+    console.log('SimplifiedActionRouter: Voice manually set to:', voiceId);
     console.log('SimplifiedActionRouter: Language for this voice:', streamingTTSService.getLanguageForVoice(voiceId));
   }
 
   setAutoDetectLanguage(enabled: boolean) {
     this.autoDetectLanguage = enabled;
-    console.log('SimplifiedActionRouter: Auto language detection:', enabled);
+    console.log('SimplifiedActionRouter: Auto language detection set to:', enabled);
   }
 
   getSelectedVoice(): string {
@@ -44,18 +44,17 @@ export class SimplifiedActionRouter {
   ): Promise<void> {
     if (!userInput.trim()) return;
 
-    console.log('SimplifiedActionRouter: processConversation called');
+    console.log('SimplifiedActionRouter: processConversation called with auto-detect:', this.autoDetectLanguage);
     
-    // Auto-detect language and select appropriate voice if enabled
+    // Determine voice to use
     let voiceToUse = this.selectedVoiceId;
+    
     if (this.autoDetectLanguage) {
       const detectedVoice = languageDetectionService.autoSelectVoiceForText(userInput);
-      if (detectedVoice !== 'english_us_male') {
-        console.log('SimplifiedActionRouter: Auto-detected voice:', detectedVoice);
-        voiceToUse = detectedVoice;
-        // Update selected voice to the detected one
-        this.selectedVoiceId = detectedVoice;
-      }
+      console.log('SimplifiedActionRouter: Auto-detected voice:', detectedVoice);
+      voiceToUse = detectedVoice;
+      // Update selected voice to the detected one for this conversation
+      this.selectedVoiceId = detectedVoice;
     }
 
     console.log('SimplifiedActionRouter: Processing conversation with voice:', voiceToUse);
