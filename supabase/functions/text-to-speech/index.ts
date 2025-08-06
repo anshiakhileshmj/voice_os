@@ -12,56 +12,59 @@ serve(async (req) => {
   }
 
   try {
-    const { text, voiceId, modelId } = await req.json()
+    const { text, voiceId, rate, pitch } = await req.json()
 
     if (!text) {
       throw new Error('Text is required')
     }
 
-    const ELEVENLABS_API_KEY = Deno.env.get('ELEVENLABS_API_KEY')
-    if (!ELEVENLABS_API_KEY) {
-      throw new Error('ElevenLabs API key not configured')
-    }
+    console.log('Converting text to speech with Edge TTS:', { 
+      text: text.substring(0, 50) + '...', 
+      voiceId, 
+      rate, 
+      pitch 
+    })
 
-    console.log('Converting text to speech:', { text: text.substring(0, 50) + '...', voiceId, modelId })
-
-    // Use ElevenLabs streaming API for better quality
-    const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}/stream`, {
+    // Call your Edge TTS server
+    const response = await fetch('https://edge-tts-g3en.onrender.com/tts', {
       method: 'POST',
       headers: {
-        'Accept': 'audio/mpeg',
         'Content-Type': 'application/json',
-        'xi-api-key': ELEVENLABS_API_KEY,
       },
       body: JSON.stringify({
-        text,
-        model_id: modelId || 'eleven_turbo_v2_5', // Faster model
-        voice_settings: {
-          stability: 0.6, // Slightly higher for faster generation
-          similarity_boost: 0.7, // Reduced for speed
-          use_speaker_boost: false, // Disabled for speed
-          speed: 1.1, // Slightly faster playback
-        },
-        output_format: 'mp3_22050_32', // Lower quality for faster processing
+        text: text.trim(),
+        voice: voiceId || 'english_us_male',
+        rate: rate || '0%',
+        pitch: pitch || '0Hz',
       }),
     })
 
     if (!response.ok) {
       const error = await response.text()
-      console.error('ElevenLabs API error:', error)
-      throw new Error(`ElevenLabs API error: ${error}`)
+      console.error('Edge TTS API error:', error)
+      throw new Error(`Edge TTS API error: ${error}`)
     }
 
-    console.log('Successfully converted text to speech')
+    const result = await response.json()
+    
+    if (!result.audio) {
+      throw new Error('No audio data received from Edge TTS service')
+    }
 
-    // Stream the audio response directly
-    const audioBuffer = await response.arrayBuffer()
+    console.log('Successfully converted text to speech with Edge TTS')
 
-    return new Response(audioBuffer, {
+    // Convert base64 to ArrayBuffer
+    const binaryString = atob(result.audio)
+    const bytes = new Uint8Array(binaryString.length)
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i)
+    }
+
+    return new Response(bytes.buffer, {
       headers: {
         ...corsHeaders,
-        'Content-Type': 'audio/mpeg',
-        'Content-Length': audioBuffer.byteLength.toString(),
+        'Content-Type': 'audio/wav',
+        'Content-Length': bytes.length.toString(),
       },
     })
   } catch (error) {

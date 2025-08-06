@@ -4,25 +4,35 @@ import { supabase } from '@/integrations/supabase/client';
 export interface VoiceOption {
   id: string;
   name: string;
+  language: string;
 }
 
 export const AVAILABLE_VOICES: VoiceOption[] = [
-  { id: 'JBFqnCBsd6RMkjVDRZzb', name: 'George' },
-  { id: '9BWtsMINqrJLrRacOk9x', name: 'Aria' },
-  { id: 'CwhRBWXzGAHq8TQ4Fs17', name: 'Roger' },
-  { id: 'EXAVITQu4vr4xnSDxMaL', name: 'Sarah' },
-  { id: 'FGY2WhTYpPnrIDTdsKH5', name: 'Laura' },
-  { id: 'IKne3meq5aSn9XLyUdCD', name: 'Charlie' },
-  { id: 'TX3LPaxmHKxFdv7VOQHJ', name: 'Liam' },
-  { id: 'XB0fDUnXU5powFXDhCwa', name: 'Charlotte' },
+  { id: 'english_us_male', name: 'English US Male', language: 'English (US)' },
+  { id: 'hindi_male', name: 'Hindi Male', language: 'Hindi' },
+  { id: 'bengali_male', name: 'Bengali Male', language: 'Bengali' },
+  { id: 'gujarati_male', name: 'Gujarati Male', language: 'Gujarati' },
+  { id: 'kannada_male', name: 'Kannada Male', language: 'Kannada' },
+  { id: 'malayalam_male', name: 'Malayalam Male', language: 'Malayalam' },
+  { id: 'marathi_male', name: 'Marathi Male', language: 'Marathi' },
+  { id: 'punjabi_male', name: 'Punjabi Male', language: 'Punjabi' },
+  { id: 'tamil_male', name: 'Tamil Male', language: 'Tamil' },
+  { id: 'telugu_male', name: 'Telugu Male', language: 'Telugu' },
 ];
+
+export interface TTSOptions {
+  voiceId?: string;
+  rate?: string; // e.g., '0%', '+20%', '-10%'
+  pitch?: string; // e.g., '0Hz', '+50Hz', '-25Hz'
+}
 
 export class TextToSpeechService {
   async convertTextToSpeech(
     text: string, 
-    voiceId: string = 'JBFqnCBsd6RMkjVDRZzb',
-    modelId: string = 'eleven_multilingual_v2'
+    options: TTSOptions = {}
   ): Promise<ArrayBuffer> {
+    const { voiceId = 'english_us_male', rate = '0%', pitch = '0Hz' } = options;
+    
     if (!text.trim()) {
       throw new Error('Text cannot be empty.');
     }
@@ -47,7 +57,8 @@ export class TextToSpeechService {
         body: JSON.stringify({
           text: text.trim(),
           voiceId,
-          modelId,
+          rate,
+          pitch,
         }),
       });
 
@@ -76,7 +87,7 @@ export class TextToSpeechService {
 
   async playAudio(audioBuffer: ArrayBuffer): Promise<void> {
     try {
-      const blob = new Blob([audioBuffer], { type: 'audio/mpeg' });
+      const blob = new Blob([audioBuffer], { type: 'audio/wav' });
       const url = URL.createObjectURL(blob);
       const audio = new Audio(url);
       
@@ -98,7 +109,11 @@ export class TextToSpeechService {
   }
 
   isConfigured(): boolean {
-    return true; // Always configured since we're using edge functions
+    return true; // Always configured since we're using Edge TTS
+  }
+
+  getAvailableVoices(): VoiceOption[] {
+    return AVAILABLE_VOICES;
   }
 }
 

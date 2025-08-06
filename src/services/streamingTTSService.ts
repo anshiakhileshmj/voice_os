@@ -3,7 +3,8 @@ import { supabase } from '@/integrations/supabase/client';
 
 export interface StreamingTTSOptions {
   voiceId?: string;
-  modelId?: string;
+  rate?: string;
+  pitch?: string;
   onAudioChunk?: (audioChunk: ArrayBuffer) => void;
   onComplete?: () => void;
   onError?: (error: Error) => void;
@@ -19,8 +20,9 @@ export class StreamingTTSService {
     options: StreamingTTSOptions = {}
   ): Promise<void> {
     const {
-      voiceId = 'JBFqnCBsd6RMkjVDRZzb',
-      modelId = 'eleven_turbo_v2_5',
+      voiceId = 'english_us_male',
+      rate = '0%',
+      pitch = '0Hz',
       onAudioChunk,
       onComplete,
       onError
@@ -32,7 +34,7 @@ export class StreamingTTSService {
     }
 
     try {
-      console.log('Converting streaming text to speech:', text.substring(0, 50) + '...');
+      console.log('Converting streaming text to speech with Edge TTS:', text.substring(0, 50) + '...');
       
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
@@ -49,7 +51,8 @@ export class StreamingTTSService {
         body: JSON.stringify({
           text: text.trim(),
           voiceId,
-          modelId,
+          rate,
+          pitch,
         }),
       });
 
@@ -64,7 +67,7 @@ export class StreamingTTSService {
         throw new Error('No audio data received');
       }
 
-      console.log('Successfully received audio data:', arrayBuffer.byteLength, 'bytes');
+      console.log('Successfully received audio data from Edge TTS:', arrayBuffer.byteLength, 'bytes');
       
       // Add to queue and play
       this.audioQueue.push(arrayBuffer);
@@ -91,7 +94,7 @@ export class StreamingTTSService {
     const audioBuffer = this.audioQueue.shift()!;
 
     try {
-      const blob = new Blob([audioBuffer], { type: 'audio/mpeg' });
+      const blob = new Blob([audioBuffer], { type: 'audio/wav' });
       const url = URL.createObjectURL(blob);
       this.currentAudio = new Audio(url);
       

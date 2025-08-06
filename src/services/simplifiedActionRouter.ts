@@ -128,6 +128,9 @@ export class SimplifiedActionRouter {
     callbacks.onTTSStart();
     
     await streamingTTSService.convertStreamingTextToSpeech(text, {
+      voiceId: 'english_us_male', // Default Edge TTS voice
+      rate: '0%',
+      pitch: '0Hz',
       onComplete: () => {
         callbacks.onTTSComplete();
       },
