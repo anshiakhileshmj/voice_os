@@ -1,3 +1,4 @@
+
 #!/usr/bin/env node
 
 import { spawn, execSync } from 'child_process';
@@ -40,6 +41,7 @@ console.log('   • Premium: $15 USD / ₹1200 INR - Unlimited access');
 console.log('   • Payment: UPI/Paytm/Bank Transfer');
 console.log('   • Support: support@mjakvoice.com');
 console.log('   • Edge TTS: 10 Male Voices with Professional Quality');
+console.log('   • Server: http://localhost:8080');
 console.log('');
 
 // Check if Python backend exists
@@ -181,13 +183,14 @@ function openUrl(url) {
 
 // Function to start frontend
 function startFrontend() {
-  console.log('🌐 Starting frontend development server...');
+  console.log('🌐 Starting frontend development server on port 8080...');
   
-  // Start the development server
+  // Start the development server with port 8080
   const devProcess = spawn('npm', ['run', 'dev'], {
     cwd: runDir,
     stdio: 'pipe',
-    shell: true
+    shell: true,
+    env: { ...process.env, PORT: '8080' }
   });
 
   let serverStarted = false;
@@ -197,12 +200,12 @@ function startFrontend() {
     const output = data.toString();
     console.log(output.trim());
     
-    // Check if server is ready and open browser
-    if (!serverStarted && (output.includes('Local:') || output.includes('localhost:5173') || output.includes('http://localhost:5173'))) {
+    // Check if server is ready and open browser (updated to port 8080)
+    if (!serverStarted && (output.includes('Local:') || output.includes('localhost:8080') || output.includes('http://localhost:8080'))) {
       serverStarted = true;
       console.log('🚀 Opening browser...');
       setTimeout(() => {
-        openUrl('http://localhost:5173');
+        openUrl('http://localhost:8080');
       }, 2000);
     }
   });
@@ -228,11 +231,11 @@ function startFrontend() {
   // Store the frontend process for cleanup
   global.frontendProcess = devProcess;
   
-  // Fallback: Open browser after 5 seconds if not already opened
+  // Fallback: Open browser after 5 seconds if not already opened (updated to port 8080)
   setTimeout(() => {
     if (!serverStarted) {
       console.log('🚀 Opening browser (fallback)...');
-      openUrl('http://localhost:5173');
+      openUrl('http://localhost:8080');
     }
   }, 5000);
 }
