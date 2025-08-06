@@ -1,5 +1,4 @@
-
-import franc from 'franc';
+import { franc } from 'franc';
 import { VOICE_LANGUAGE_MAP, AVAILABLE_VOICES } from './textToSpeechService';
 
 export interface DetectedLanguage {
