@@ -1,5 +1,5 @@
-
 import { supabase } from '@/integrations/supabase/client';
+import { VOICE_LANGUAGE_MAP } from './textToSpeechService';
 
 export interface StreamingTTSOptions {
   voiceId?: string;
@@ -35,6 +35,7 @@ export class StreamingTTSService {
 
     try {
       console.log('Converting streaming text to speech with Edge TTS:', text.substring(0, 50) + '...');
+      console.log('Using voice:', voiceId, 'Language:', VOICE_LANGUAGE_MAP[voiceId] || 'en');
       
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
@@ -134,6 +135,10 @@ export class StreamingTTSService {
 
   isCurrentlyPlaying(): boolean {
     return this.isPlaying;
+  }
+
+  getLanguageForVoice(voiceId: string): string {
+    return VOICE_LANGUAGE_MAP[voiceId] || 'en';
   }
 }
 

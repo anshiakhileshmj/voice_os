@@ -1,6 +1,6 @@
 
-import { streamingLLMService } from './streamingLLMService';
 import { streamingTTSService } from './streamingTTSService';
+import { languageAwareLLMService } from './languageAwareLLMService';
 import { spotifyService } from './spotifyService';
 import { automateService } from './automateService';
 
@@ -15,9 +15,15 @@ export interface ConversationCallbacks {
 export class SimplifiedActionRouter {
   private isAutomateEnabled = false;
   private currentResponse = '';
+  private selectedVoiceId = 'english_us_male'; // Default voice
 
   setAutomateEnabled(enabled: boolean) {
     this.isAutomateEnabled = enabled;
+  }
+
+  setSelectedVoice(voiceId: string) {
+    this.selectedVoiceId = voiceId;
+    console.log('Voice changed to:', voiceId);
   }
 
   async processConversation(
@@ -40,8 +46,9 @@ export class SimplifiedActionRouter {
       // Reset current response
       this.currentResponse = '';
 
-      // Stream LLM response
-      await streamingLLMService.generateStreamingResponse(userInput, {
+      // Stream language-aware LLM response
+      await languageAwareLLMService.generateLanguageAwareResponse(userInput, {
+        voiceId: this.selectedVoiceId,
         onChunk: (chunk: string) => {
           this.currentResponse += chunk;
           callbacks.onLLMChunk(chunk);
@@ -128,7 +135,7 @@ export class SimplifiedActionRouter {
     callbacks.onTTSStart();
     
     await streamingTTSService.convertStreamingTextToSpeech(text, {
-      voiceId: 'english_us_male', // Default Edge TTS voice
+      voiceId: this.selectedVoiceId,
       rate: '0%',
       pitch: '0Hz',
       onComplete: () => {

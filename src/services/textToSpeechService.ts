@@ -7,9 +7,11 @@ export interface VoiceOption {
   language: string;
 }
 
+// Updated voice list to match your Edge TTS server
 export const AVAILABLE_VOICES: VoiceOption[] = [
-  { id: 'english_us_male', name: 'English US Male', language: 'English (US)' },
-  { id: 'hindi_male', name: 'Hindi Male', language: 'Hindi' },
+  { id: 'english_us_male', name: 'English US Male (Andrew)', language: 'English (US)' },
+  { id: 'english_uk_male', name: 'English UK Male (Ryan)', language: 'English (UK)' },
+  { id: 'hindi_male', name: 'Hindi Male (Madhur)', language: 'Hindi' },
   { id: 'bengali_male', name: 'Bengali Male', language: 'Bengali' },
   { id: 'gujarati_male', name: 'Gujarati Male', language: 'Gujarati' },
   { id: 'kannada_male', name: 'Kannada Male', language: 'Kannada' },
@@ -18,7 +20,36 @@ export const AVAILABLE_VOICES: VoiceOption[] = [
   { id: 'punjabi_male', name: 'Punjabi Male', language: 'Punjabi' },
   { id: 'tamil_male', name: 'Tamil Male', language: 'Tamil' },
   { id: 'telugu_male', name: 'Telugu Male', language: 'Telugu' },
+  { id: 'german_male', name: 'German Male (Conrad)', language: 'German' },
+  { id: 'french_male', name: 'French Male (Henri)', language: 'French' },
+  { id: 'spanish_male', name: 'Spanish Male (Alvaro)', language: 'Spanish' },
+  { id: 'italian_male', name: 'Italian Male (Diego)', language: 'Italian' },
+  { id: 'portuguese_male', name: 'Portuguese Male (Duarte)', language: 'Portuguese' },
+  { id: 'russian_male', name: 'Russian Male (Dmitry)', language: 'Russian' },
+  { id: 'japanese_male', name: 'Japanese Male (Keita)', language: 'Japanese' },
 ];
+
+// Language mapping for voice-based responses
+export const VOICE_LANGUAGE_MAP: Record<string, string> = {
+  'english_us_male': 'en',
+  'english_uk_male': 'en',
+  'hindi_male': 'hi',
+  'bengali_male': 'bn',
+  'gujarati_male': 'gu',
+  'kannada_male': 'kn',
+  'malayalam_male': 'ml',
+  'marathi_male': 'mr',
+  'punjabi_male': 'pa',
+  'tamil_male': 'ta',
+  'telugu_male': 'te',
+  'german_male': 'de',
+  'french_male': 'fr',
+  'spanish_male': 'es',
+  'italian_male': 'it',
+  'portuguese_male': 'pt',
+  'russian_male': 'ru',
+  'japanese_male': 'ja',
+};
 
 export interface TTSOptions {
   voiceId?: string;
@@ -114,6 +145,14 @@ export class TextToSpeechService {
 
   getAvailableVoices(): VoiceOption[] {
     return AVAILABLE_VOICES;
+  }
+
+  getLanguageForVoice(voiceId: string): string {
+    return VOICE_LANGUAGE_MAP[voiceId] || 'en';
+  }
+
+  getVoiceInfo(voiceId: string): VoiceOption | undefined {
+    return AVAILABLE_VOICES.find(voice => voice.id === voiceId);
   }
 }
 
