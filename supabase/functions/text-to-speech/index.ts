@@ -25,6 +25,27 @@ serve(async (req) => {
       pitch 
     })
 
+    // Convert rate and pitch to numeric values
+    // Rate: "0%" -> 1.0, "+20%" -> 1.2, "-10%" -> 0.9
+    let speedValue = 1.0;
+    if (rate && typeof rate === 'string') {
+      const rateMatch = rate.match(/([+-]?\d+)%/);
+      if (rateMatch) {
+        const percentage = parseInt(rateMatch[1]);
+        speedValue = 1.0 + (percentage / 100);
+      }
+    }
+
+    // Pitch: "0Hz" -> 1.0, "+50Hz" -> 1.5, "-25Hz" -> 0.75
+    let pitchValue = 1.0;
+    if (pitch && typeof pitch === 'string') {
+      const pitchMatch = pitch.match(/([+-]?\d+)Hz/);
+      if (pitchMatch) {
+        const hertz = parseInt(pitchMatch[1]);
+        pitchValue = 1.0 + (hertz / 100); // Convert Hz to relative pitch
+      }
+    }
+
     // Call your Edge TTS server
     const response = await fetch('https://edge-tts-g3en.onrender.com/tts', {
       method: 'POST',
@@ -33,9 +54,9 @@ serve(async (req) => {
       },
       body: JSON.stringify({
         text: text.trim(),
-        voice: voiceId || 'english_us_male',
-        rate: rate || '0%',
-        pitch: pitch || '0Hz',
+        voice_id: voiceId || 'english_us_male',
+        speed: speedValue,
+        pitch: pitchValue,
       }),
     })
 
@@ -47,14 +68,14 @@ serve(async (req) => {
 
     const result = await response.json()
     
-    if (!result.audio) {
+    if (!result.success || !result.audio_base64) {
       throw new Error('No audio data received from Edge TTS service')
     }
 
     console.log('Successfully converted text to speech with Edge TTS')
 
     // Convert base64 to ArrayBuffer
-    const binaryString = atob(result.audio)
+    const binaryString = atob(result.audio_base64)
     const bytes = new Uint8Array(binaryString.length)
     for (let i = 0; i < binaryString.length; i++) {
       bytes[i] = binaryString.charCodeAt(i)
