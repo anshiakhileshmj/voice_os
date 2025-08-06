@@ -24,7 +24,12 @@ export class SimplifiedActionRouter {
 
   setSelectedVoice(voiceId: string) {
     this.selectedVoiceId = voiceId;
-    console.log('Voice changed to:', voiceId);
+    console.log('SimplifiedActionRouter: Voice changed to:', voiceId);
+    console.log('SimplifiedActionRouter: Language for this voice:', streamingTTSService.getLanguageForVoice(voiceId));
+  }
+
+  getSelectedVoice(): string {
+    return this.selectedVoiceId;
   }
 
   async processConversation(
@@ -32,6 +37,8 @@ export class SimplifiedActionRouter {
     callbacks: ConversationCallbacks
   ): Promise<void> {
     if (!userInput.trim()) return;
+
+    console.log('SimplifiedActionRouter: Processing conversation with voice:', this.selectedVoiceId);
 
     try {
       // Quick check for specific actions before going to LLM
@@ -133,6 +140,7 @@ export class SimplifiedActionRouter {
   }
 
   private async handleTTS(text: string, callbacks: ConversationCallbacks) {
+    console.log('SimplifiedActionRouter: Starting TTS with voice:', this.selectedVoiceId);
     callbacks.onTTSStart();
     
     await streamingTTSService.convertStreamingTextToSpeech(text, {

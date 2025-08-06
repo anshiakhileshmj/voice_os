@@ -19,6 +19,9 @@ class LanguageAwareLLMService {
     // Get language code from voice selection
     const languageCode = VOICE_LANGUAGE_MAP[voiceId] || 'en';
     
+    console.log('LanguageAwareLLMService: Processing with voice:', voiceId);
+    console.log('LanguageAwareLLMService: Language code:', languageCode);
+    
     // Create language-specific system prompt
     const languagePrompt = this.getLanguagePrompt(languageCode);
     const enhancedInput = `${languagePrompt}\n\nUser: ${userInput}`;
