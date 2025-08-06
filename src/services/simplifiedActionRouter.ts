@@ -68,8 +68,15 @@ export class SimplifiedActionRouter {
     // Spotify commands
     if (input.includes('play') && (input.includes('song') || input.includes('music') || input.includes('spotify'))) {
       try {
-        const result = await spotifyService.searchAndPlay(userInput);
-        return { message: result.message, speak: true };
+        // Extract song name from input and search/play
+        const songQuery = userInput.replace(/play|song|music|spotify/gi, '').trim();
+        const track = await spotifyService.searchTrack(songQuery);
+        if (track) {
+          await spotifyService.playTrack(track.uri);
+          return { message: `Playing ${track.name} by ${track.artist}`, speak: true };
+        } else {
+          return { message: "I couldn't find that song. Could you try again?", speak: true };
+        }
       } catch (error) {
         return { message: "I had trouble playing that song. Could you try again?", speak: true };
       }
@@ -89,7 +96,11 @@ export class SimplifiedActionRouter {
     if (this.isAutomateEnabled) {
       if (input.includes('open') || input.includes('launch') || input.includes('start')) {
         try {
-          const result = await automateService.executeAction('open_application', { query: userInput });
+          const actions = await automateService.generateActions(`Open application: ${userInput}`);
+          const result = await automateService.executeActions({
+            actions,
+            objective: `Open application: ${userInput}`
+          });
           return { message: result.message, speak: true };
         } catch (error) {
           return { message: "I had trouble opening that application.", speak: true };
@@ -98,7 +109,11 @@ export class SimplifiedActionRouter {
 
       if (input.includes('screenshot') || input.includes('capture screen')) {
         try {
-          const result = await automateService.executeAction('take_screenshot', {});
+          const actions = await automateService.generateActions('Take a screenshot');
+          const result = await automateService.executeActions({
+            actions,
+            objective: 'Take a screenshot'
+          });
           return { message: result.message, speak: true };
         } catch (error) {
           return { message: "I had trouble taking a screenshot.", speak: true };
