@@ -7,9 +7,8 @@ import { Switch } from '@/components/ui/switch';
 import { Mic, MicOff, Download, Trash2, Volume2, VolumeX, LogOut, Bot } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
-import { textToSpeechService, AVAILABLE_VOICES } from '@/services/textToSpeechService';
-import { llmService, ConversationMessage } from '@/services/llmService';
-import { actionRouter } from '@/services/actionRouter';
+import { AVAILABLE_VOICES } from '@/services/textToSpeechService';
+import { simplifiedActionRouter } from '@/services/simplifiedActionRouter';
 import { spotifyService } from '@/services/spotifyService';
 import { automateService } from '@/services/automateService';
 import { supabase } from '@/integrations/supabase/client';
@@ -22,7 +21,7 @@ interface TranscriptEntry {
   id: string;
   text: string;
   timestamp: Date;
-  confidence?: number;
+  type: 'user' | 'assistant';
 }
 
 const Index = () => {
@@ -30,28 +29,25 @@ const Index = () => {
   const [isRecording, setIsRecording] = useState(false);
   const [transcript, setTranscript] = useState<TranscriptEntry[]>([]);
   const [currentTranscript, setCurrentTranscript] = useState('');
+  const [currentResponse, setCurrentResponse] = useState('');
   const [isSupported, setIsSupported] = useState(true);
   const [selectedVoice, setSelectedVoice] = useState('JBFqnCBsd6RMkjVDRZzb');
-  const [isPlayingTTS, setIsPlayingTTS] = useState(false);
-  const [conversationHistory, setConversationHistory] = useState<ConversationMessage[]>([]);
   const [isProcessingLLM, setIsProcessingLLM] = useState(false);
+  const [isPlayingTTS, setIsPlayingTTS] = useState(false);
   const [isSpotifyConnected, setIsSpotifyConnected] = useState(false);
   const [isSpotifyEnabled, setIsSpotifyEnabled] = useState(false);
   const [isAutomateEnabled, setIsAutomateEnabled] = useState(false);
   const [isAutomateConnected, setIsAutomateConnected] = useState(false);
   const [userName, setUserName] = useState('');
   const [lastUploadedDocument, setLastUploadedDocument] = useState<any>(null);
+  const [fabOpen, setFabOpen] = useState(false);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const { toast } = useToast();
-  const [uploading, setUploading] = useState(false);
-  const [fabOpen, setFabOpen] = useState(false);
 
-  // Redirect to landing page if not logged in
   useEffect(() => {
     if (!loading && !user) {
       window.location.href = '/';
     } else if (user) {
-      // Get user profile to fetch name
       const getUserProfile = async () => {
         const { data: profile } = await supabase
           .from('profiles')
@@ -69,7 +65,6 @@ const Index = () => {
     }
   }, [user, loading]);
 
-  // Check automation service connection
   useEffect(() => {
     const checkAutomateConnection = async () => {
       if (isAutomateEnabled) {
@@ -86,7 +81,6 @@ const Index = () => {
     };
 
     checkAutomateConnection();
-    // Check connection every 30 seconds when automate is enabled
     const interval = isAutomateEnabled ? setInterval(checkAutomateConnection, 30000) : null;
 
     return () => {
@@ -94,17 +88,14 @@ const Index = () => {
     };
   }, [isAutomateEnabled, toast]);
 
-  // Check Spotify connection status and handle OAuth callback
   useEffect(() => {
     const checkSpotifyConnection = async () => {
       if (user) {
-        // Check for Spotify OAuth callback
         const urlParams = new URLSearchParams(window.location.search);
         const code = urlParams.get('code');
         const state = urlParams.get('state');
         
         if (code && state) {
-          // Handle Spotify OAuth callback
           try {
             const success = await spotifyService.handleCallback(code, state);
             if (success) {
@@ -113,7 +104,6 @@ const Index = () => {
                 title: "Spotify Connected!",
                 description: "You can now control music with voice commands.",
               });
-              // Clean URL
               window.history.replaceState({}, document.title, window.location.pathname);
             } else {
               toast({
@@ -131,7 +121,6 @@ const Index = () => {
             });
           }
         } else {
-          // Check existing connection
           const connected = await spotifyService.isConnected();
           setIsSpotifyConnected(connected);
         }
@@ -141,7 +130,6 @@ const Index = () => {
   }, [user, toast]);
 
   useEffect(() => {
-    // Check if speech recognition is supported
     if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
       setIsSupported(false);
       toast({
@@ -152,7 +140,6 @@ const Index = () => {
       return;
     }
 
-    // Initialize speech recognition
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     recognitionRef.current = new SpeechRecognition();
     
@@ -179,14 +166,14 @@ const Index = () => {
             id: Date.now().toString(),
             text: finalTranscript.trim(),
             timestamp: new Date(),
-            confidence: event.results[event.results.length - 1][0].confidence
+            type: 'user'
           };
           
           setTranscript(prev => [...prev, newEntry]);
           setCurrentTranscript('');
           
-          // Process through LLM and convert to speech
-          handleConversationalResponse(finalTranscript.trim());
+          // Process through streamlined conversation system
+          handleStreamingConversation(finalTranscript.trim());
         } else {
           setCurrentTranscript(interimTranscript);
         }
@@ -215,105 +202,60 @@ const Index = () => {
     };
   }, [toast]);
 
-  const handleConversationalResponse = async (userInput: string) => {
+  const handleStreamingConversation = async (userInput: string) => {
     if (!userInput.trim()) return;
 
     setIsProcessingLLM(true);
+    setCurrentResponse('');
     
+    // Set automation state
+    simplifiedActionRouter.setAutomateEnabled(isAutomateEnabled);
+
     try {
-      // Check if this is related to a recently uploaded document
-      let enrichedInput = userInput;
-      if (lastUploadedDocument && 
-          (userInput.toLowerCase().includes('summarize') || 
-           userInput.toLowerCase().includes('extract') || 
-           userInput.toLowerCase().includes('format') ||
-           userInput.toLowerCase().includes('question'))) {
-        // Add document context to the input
-        enrichedInput = `${userInput} (document: ${lastUploadedDocument.id})`;
-      }
-
-      // Use action router to process input and detect intents
-      const { intent, actionResult, llmResponse } = await actionRouter.processUserInput(
-        enrichedInput,
-        conversationHistory,
-        isAutomateEnabled
-      );
-
-      console.log('Intent detected:', intent);
-
-      // Handle action results
-      if (actionResult) {
-        if (actionResult.requiresTTS && actionResult.message) {
+      await simplifiedActionRouter.processConversation(userInput, {
+        onLLMChunk: (chunk: string) => {
+          setCurrentResponse(prev => prev + chunk);
+        },
+        onLLMComplete: (response: string) => {
           setIsProcessingLLM(false);
-          await handleTextToSpeech(actionResult.message);
+          
+          // Add assistant response to transcript
+          const assistantEntry: TranscriptEntry = {
+            id: (Date.now() + 1).toString(),
+            text: response,
+            timestamp: new Date(),
+            type: 'assistant'
+          };
+          setTranscript(prev => [...prev, assistantEntry]);
+          setCurrentResponse('');
+        },
+        onTTSStart: () => {
+          setIsPlayingTTS(true);
+        },
+        onTTSComplete: () => {
+          setIsPlayingTTS(false);
+        },
+        onError: (error: Error) => {
+          console.error('Conversation error:', error);
+          setIsProcessingLLM(false);
+          setIsPlayingTTS(false);
+          toast({
+            title: "Conversation Error",
+            description: error.message,
+            variant: "destructive"
+          });
         }
-
-        // Update Spotify connection status if needed
-        if (intent.intent === 'connect_spotify' && actionResult.success) {
-          setIsSpotifyConnected(true);
-        }
-
-        // Add action result to conversation history
-        const newHistory = [
-          ...conversationHistory,
-          { role: 'user' as const, content: userInput },
-          { role: 'assistant' as const, content: actionResult.message }
-        ];
-        setConversationHistory(newHistory);
-      } else if (llmResponse) {
-        // Handle normal conversation
-        const { updatedHistory } = await llmService.generateResponse(userInput, conversationHistory);
-        setConversationHistory(updatedHistory);
-        setIsProcessingLLM(false);
-        await handleTextToSpeech(llmResponse);
-      }
+      });
 
     } catch (error) {
-      console.error('Conversational response error:', error);
+      console.error('Streaming conversation error:', error);
       setIsProcessingLLM(false);
+      setIsPlayingTTS(false);
       toast({
         title: "AI Error",
         description: error instanceof Error ? error.message : "Failed to process your request.",
         variant: "destructive"
       });
-    }
-  };
-
-  const handleTextToSpeech = async (text: string) => {
-    if (!text.trim()) return;
-
-    setIsPlayingTTS(true);
-    try {
-      const audioBuffer = await textToSpeechService.convertTextToSpeech(text, selectedVoice);
-      await textToSpeechService.playAudio(audioBuffer);
-    } catch (error) {
-      console.error('Text-to-speech error:', error);
-      toast({
-        title: "TTS Error",
-        description: error instanceof Error ? error.message : "Failed to convert text to speech.",
-        variant: "destructive"
-      });
-    } finally {
-      setIsPlayingTTS(false);
-    }
-  };
-
-  const saveTranscriptionSession = async (transcriptText: string) => {
-    if (!user) return;
-
-    try {
-      const { error } = await supabase
-        .from('transcription_sessions')
-        .insert({
-          user_id: user.id,
-          transcript: transcriptText,
-        });
-
-      if (error) {
-        console.error('Error saving transcription:', error);
-      }
-    } catch (error) {
-      console.error('Error saving transcription session:', error);
     }
   };
 
@@ -325,7 +267,7 @@ const Index = () => {
       setIsRecording(true);
       toast({
         title: "Recording Started",
-        description: "Speak into your microphone. Your speech will be transcribed in real-time.",
+        description: "Speak naturally. I'm listening and will respond in real-time.",
       });
     } catch (error) {
       console.error('Error starting recognition:', error);
@@ -341,23 +283,24 @@ const Index = () => {
     if (!recognitionRef.current) return;
     
     recognitionRef.current.stop();
+    simplifiedActionRouter.stopCurrentConversation();
     setIsRecording(false);
+    setIsProcessingLLM(false);
+    setIsPlayingTTS(false);
     toast({
       title: "Recording Stopped",
-      description: "Transcription session ended.",
+      description: "Conversation ended.",
     });
-
-    // Save the transcription session
-    const fullTranscript = transcript.map(entry => entry.text).join('\n');
-    saveTranscriptionSession(fullTranscript);
   };
 
   const clearTranscript = () => {
     setTranscript([]);
     setCurrentTranscript('');
+    setCurrentResponse('');
+    simplifiedActionRouter.clearConversationHistory();
     toast({
-      title: "Transcript Cleared",
-      description: "All transcription data has been removed.",
+      title: "Conversation Cleared",
+      description: "All conversation data has been removed.",
     });
   };
 
@@ -365,21 +308,21 @@ const Index = () => {
     if (transcript.length === 0) {
       toast({
         title: "No Content",
-        description: "No transcript available to download.",
+        description: "No conversation available to download.",
         variant: "destructive"
       });
       return;
     }
 
     const content = transcript
-      .map(entry => `[${entry.timestamp.toLocaleTimeString()}] ${entry.text}`)
+      .map(entry => `[${entry.timestamp.toLocaleTimeString()}] ${entry.type === 'user' ? 'You' : 'MJAK'}: ${entry.text}`)
       .join('\n\n');
     
     const blob = new Blob([content], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `transcript-${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.txt`;
+    a.download = `conversation-${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.txt`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -387,7 +330,7 @@ const Index = () => {
 
     toast({
       title: "Download Complete",
-      description: "Transcript has been downloaded successfully.",
+      description: "Conversation has been downloaded successfully.",
     });
   };
 
@@ -404,7 +347,6 @@ const Index = () => {
     setIsSpotifyEnabled(enabled);
     
     if (enabled && !isSpotifyConnected) {
-      // Try to connect to Spotify
       try {
         await spotifyService.initiateAuth();
         toast({
@@ -423,7 +365,7 @@ const Index = () => {
     } else if (!enabled) {
       toast({
         title: "Spotify Disabled",
-        description: "Spotify integration has been disabled. You can still play music by enabling it again.",
+        description: "Spotify integration has been disabled.",
       });
     }
   };
@@ -432,14 +374,13 @@ const Index = () => {
     setIsAutomateEnabled(enabled);
     
     if (enabled) {
-      // Check if automation service is running
       const connected = await automateService.checkConnection();
       setIsAutomateConnected(connected);
       
       if (connected) {
         toast({
           title: "Automation Enabled",
-          description: "You can now automate your computer with voice commands like 'open Google' or 'create a document'.",
+          description: "You can now automate your computer with voice commands like 'open Google' or 'take a screenshot'.",
         });
       } else {
         toast({
@@ -462,16 +403,15 @@ const Index = () => {
       setLastUploadedDocument(document);
     }
     
-    // Automatically turn on microphone and prompt user for action
-    const promptMessage = "PDF uploaded successfully! What would you like me to do with this PDF? I can summarize, extract text, format it, or answer questions about it.";
+    const promptMessage = "PDF uploaded successfully! What would you like me to do with this PDF?";
     
-    await handleTextToSpeech(promptMessage);
+    // Handle through streaming conversation system
+    await handleStreamingConversation(promptMessage);
     
-    // Auto-start recording if not already recording
     if (!isRecording) {
       setTimeout(() => {
         startRecording();
-      }, 3000); // Give 3 seconds for the TTS to finish
+      }, 2000);
     }
   };
 
@@ -492,7 +432,7 @@ const Index = () => {
   }
 
   if (!user) {
-    return null; // Will redirect to auth
+    return null;
   }
 
   if (!isSupported) {
@@ -515,7 +455,7 @@ const Index = () => {
   return (
     <div className="min-h-screen" style={{ background: 'rgb(33,33,33)' }}>
       <div className="max-w-4xl mx-auto space-y-6">
-        {/* Voice Settings */}
+        {/* Settings Card */}
         <Card className="border-0 shadow-lg bg-white/80 backdrop-blur-sm">
           <CardHeader>
             <CardTitle className="text-sm">Settings</CardTitle>
@@ -538,15 +478,16 @@ const Index = () => {
                     </SelectContent>
                   </Select>
                 </div>
-                {isPlayingTTS && (
+                {(isPlayingTTS || isProcessingLLM) && (
                   <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <Volume2 className="w-4 h-4 animate-pulse" />
-                    Playing...
+                    <Bot className="w-4 h-4 animate-pulse" />
+                    {isProcessingLLM ? 'Thinking...' : 'Speaking...'}
                   </div>
                 )}
               </div>
             </div>
 
+            {/* Automation Status */}
             {isAutomateEnabled && (
               <div>
                 <label className="text-sm font-medium mb-2 block">Automation Status</label>
@@ -574,7 +515,8 @@ const Index = () => {
                 </p>
               </div>
             )}
-            
+
+            {/* Spotify Status */}
             {isSpotifyEnabled && (
               <div>
                 <label className="text-sm font-medium mb-2 block">Spotify Status</label>
@@ -618,32 +560,62 @@ const Index = () => {
           />
         </div>
 
-        {/* Live Transcript */}
-        {(currentTranscript || isRecording) && (
+        {/* Live Transcript & Response */}
+        {(currentTranscript || currentResponse || isRecording) && (
           <Card className="border-0 shadow-lg bg-gradient-to-r from-blue-50 to-purple-50 border-blue-200">
             <CardHeader>
               <CardTitle className="text-sm font-medium text-blue-700 flex items-center gap-2">
                 <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
-                Live Transcript
+                Live Conversation
               </CardTitle>
             </CardHeader>
-            <CardContent>
-              <p className="text-lg text-gray-700 min-h-[3rem] leading-relaxed">
-                {currentTranscript || (isRecording ? "Listening..." : "")}
-              </p>
+            <CardContent className="space-y-3">
+              {currentTranscript && (
+                <div className="text-lg text-gray-700 leading-relaxed">
+                  <span className="text-xs text-muted-foreground">You:</span>
+                  <p>{currentTranscript}</p>
+                </div>
+              )}
+              {currentResponse && (
+                <div className="text-lg text-blue-800 leading-relaxed">
+                  <span className="text-xs text-blue-600">MJAK:</span>
+                  <p>{currentResponse}</p>
+                </div>
+              )}
+              {isRecording && !currentTranscript && !currentResponse && (
+                <p className="text-lg text-gray-700 min-h-[3rem] leading-relaxed">Listening...</p>
+              )}
             </CardContent>
           </Card>
         )}
 
-        {/* Transcript History */}
+        {/* Conversation History */}
         <Card className="border-0 shadow-lg bg-white/80 backdrop-blur-sm">
           <CardHeader>
             <CardTitle className="flex items-center justify-between">
-              <span>Transcript History</span>
+              <span>Conversation History</span>
               {transcript.length > 0 && (
-                <Badge variant="secondary" className="bg-blue-100 text-blue-700">
-                  {transcript.length} entries
-                </Badge>
+                <div className="flex items-center gap-2">
+                  <Badge variant="secondary" className="bg-blue-100 text-blue-700">
+                    {transcript.length} messages
+                  </Badge>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={clearTranscript}
+                    className="h-6 px-2 text-xs"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={downloadTranscript}
+                    className="h-6 px-2 text-xs"
+                  >
+                    <Download className="w-3 h-3" />
+                  </Button>
+                </div>
               )}
             </CardTitle>
           </CardHeader>
@@ -651,9 +623,9 @@ const Index = () => {
             {transcript.length === 0 ? (
               <div className="text-center py-12">
                 <Mic className="w-12 h-12 mx-auto text-muted-foreground mb-4 opacity-50" />
-                <p className="text-muted-foreground text-lg">No transcripts yet</p>
+                <p className="text-muted-foreground text-lg">No conversations yet</p>
                 <p className="text-sm text-muted-foreground mt-2">
-                  Click "Start Recording" to begin transcribing your speech
+                  Click "Start Call" to begin a natural conversation with MJAK
                 </p>
               </div>
             ) : (
@@ -661,36 +633,20 @@ const Index = () => {
                 {transcript.map((entry, index) => (
                   <div
                     key={entry.id}
-                    className="p-4 bg-gradient-to-r from-gray-50 to-blue-50 rounded-lg border border-gray-200 hover:shadow-md transition-shadow duration-200"
+                    className={`p-4 rounded-lg border transition-shadow duration-200 ${
+                      entry.type === 'user' 
+                        ? 'bg-gradient-to-r from-gray-50 to-blue-50 border-gray-200' 
+                        : 'bg-gradient-to-r from-purple-50 to-pink-50 border-purple-200'
+                    }`}
                   >
                     <div className="flex items-start justify-between mb-2">
                       <div className="flex items-center gap-2">
                         <Badge variant="outline" className="text-xs">
-                          #{index + 1}
+                          {entry.type === 'user' ? 'You' : 'MJAK'}
                         </Badge>
-                        {textToSpeechService.isConfigured() && (
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => handleTextToSpeech(entry.text)}
-                            disabled={isPlayingTTS}
-                            className="h-6 px-2 text-xs"
-                          >
-                            {isPlayingTTS ? (
-                              <VolumeX className="w-3 h-3" />
-                            ) : (
-                              <Volume2 className="w-3 h-3" />
-                            )}
-                          </Button>
-                        )}
                       </div>
-                      <div className="text-xs text-muted-foreground flex items-center gap-2">
-                        <span>{formatTimestamp(entry.timestamp)}</span>
-                        {entry.confidence && (
-                          <Badge variant="secondary" className="text-xs">
-                            {Math.round(entry.confidence * 100)}% confidence
-                          </Badge>
-                        )}
+                      <div className="text-xs text-muted-foreground">
+                        {formatTimestamp(entry.timestamp)}
                       </div>
                     </div>
                     <p className="text-gray-800 leading-relaxed">{entry.text}</p>
@@ -741,7 +697,6 @@ const Index = () => {
                       });
                       return;
                     }
-                    setUploading(true);
                     try {
                       const { documentService } = await import('@/services/documentService');
                       const uploadedDoc = await documentService.uploadDocument(file, user.id);
@@ -758,7 +713,6 @@ const Index = () => {
                         variant: "destructive"
                       });
                     } finally {
-                      setUploading(false);
                       e.target.value = '';
                     }
                   }}

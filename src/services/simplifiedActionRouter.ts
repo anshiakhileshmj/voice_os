@@ -1,0 +1,133 @@
+
+import { streamingLLMService } from './streamingLLMService';
+import { streamingTTSService } from './streamingTTSService';
+import { spotifyService } from './spotifyService';
+import { automateService } from './automateService';
+
+export interface ConversationCallbacks {
+  onLLMChunk: (chunk: string) => void;
+  onLLMComplete: (response: string) => void;
+  onTTSStart: () => void;
+  onTTSComplete: () => void;
+  onError: (error: Error) => void;
+}
+
+export class SimplifiedActionRouter {
+  private isAutomateEnabled = false;
+  private currentResponse = '';
+
+  setAutomateEnabled(enabled: boolean) {
+    this.isAutomateEnabled = enabled;
+  }
+
+  async processConversation(
+    userInput: string,
+    callbacks: ConversationCallbacks
+  ): Promise<void> {
+    if (!userInput.trim()) return;
+
+    try {
+      // Quick check for specific actions before going to LLM
+      const quickAction = await this.handleQuickActions(userInput);
+      if (quickAction) {
+        callbacks.onLLMComplete(quickAction.message);
+        if (quickAction.speak) {
+          this.handleTTS(quickAction.message, callbacks);
+        }
+        return;
+      }
+
+      // Reset current response
+      this.currentResponse = '';
+
+      // Stream LLM response
+      await streamingLLMService.generateStreamingResponse(userInput, {
+        onChunk: (chunk: string) => {
+          this.currentResponse += chunk;
+          callbacks.onLLMChunk(chunk);
+        },
+        onComplete: (fullResponse: string) => {
+          this.currentResponse = fullResponse;
+          callbacks.onLLMComplete(fullResponse);
+          
+          // Start TTS immediately after LLM completes
+          this.handleTTS(fullResponse, callbacks);
+        },
+        onError: callbacks.onError
+      });
+
+    } catch (error) {
+      console.error('Conversation processing error:', error);
+      callbacks.onError(error instanceof Error ? error : new Error('Unknown conversation error'));
+    }
+  }
+
+  private async handleQuickActions(userInput: string): Promise<{message: string, speak: boolean} | null> {
+    const input = userInput.toLowerCase();
+
+    // Spotify commands
+    if (input.includes('play') && (input.includes('song') || input.includes('music') || input.includes('spotify'))) {
+      try {
+        const result = await spotifyService.searchAndPlay(userInput);
+        return { message: result.message, speak: true };
+      } catch (error) {
+        return { message: "I had trouble playing that song. Could you try again?", speak: true };
+      }
+    }
+
+    // Connect Spotify
+    if (input.includes('connect spotify') || input.includes('spotify connect')) {
+      try {
+        await spotifyService.initiateAuth();
+        return { message: "I'm redirecting you to connect your Spotify account.", speak: true };
+      } catch (error) {
+        return { message: "I had trouble connecting to Spotify. Please try again.", speak: true };
+      }
+    }
+
+    // Automation commands (only if enabled)
+    if (this.isAutomateEnabled) {
+      if (input.includes('open') || input.includes('launch') || input.includes('start')) {
+        try {
+          const result = await automateService.executeAction('open_application', { query: userInput });
+          return { message: result.message, speak: true };
+        } catch (error) {
+          return { message: "I had trouble opening that application.", speak: true };
+        }
+      }
+
+      if (input.includes('screenshot') || input.includes('capture screen')) {
+        try {
+          const result = await automateService.executeAction('take_screenshot', {});
+          return { message: result.message, speak: true };
+        } catch (error) {
+          return { message: "I had trouble taking a screenshot.", speak: true };
+        }
+      }
+    }
+
+    return null;
+  }
+
+  private async handleTTS(text: string, callbacks: ConversationCallbacks) {
+    callbacks.onTTSStart();
+    
+    await streamingTTSService.convertStreamingTextToSpeech(text, {
+      onComplete: () => {
+        callbacks.onTTSComplete();
+      },
+      onError: callbacks.onError
+    });
+  }
+
+  stopCurrentConversation() {
+    streamingLLMService.stopStreaming();
+    streamingTTSService.stopPlayback();
+  }
+
+  clearConversationHistory() {
+    streamingLLMService.clearHistory();
+  }
+}
+
+export const simplifiedActionRouter = new SimplifiedActionRouter();
