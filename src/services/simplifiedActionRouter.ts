@@ -1,9 +1,9 @@
+
 import { streamingTTSService } from './streamingTTSService';
 import { languageAwareLLMService } from './languageAwareLLMService';
 import { streamingLLMService } from './streamingLLMService';
 import { spotifyService } from './spotifyService';
 import { automateService } from './automateService';
-import { languageDetectionService } from './languageDetectionService';
 
 export interface ConversationCallbacks {
   onLLMChunk: (chunk: string) => void;
@@ -16,8 +16,7 @@ export interface ConversationCallbacks {
 export class SimplifiedActionRouter {
   private isAutomateEnabled = false;
   private currentResponse = '';
-  private selectedVoiceId = 'english_us_male';
-  private autoDetectLanguage = false;
+  private selectedVoiceId = 'english_us_male'; // Default voice
 
   setAutomateEnabled(enabled: boolean) {
     this.isAutomateEnabled = enabled;
@@ -25,17 +24,7 @@ export class SimplifiedActionRouter {
 
   setSelectedVoice(voiceId: string) {
     this.selectedVoiceId = voiceId;
-    console.log('SimplifiedActionRouter: Voice manually set to:', voiceId);
-    console.log('SimplifiedActionRouter: Language for this voice:', streamingTTSService.getLanguageForVoice(voiceId));
-  }
-
-  setAutoDetectLanguage(enabled: boolean) {
-    this.autoDetectLanguage = enabled;
-    console.log('SimplifiedActionRouter: Auto language detection set to:', enabled);
-  }
-
-  getSelectedVoice(): string {
-    return this.selectedVoiceId;
+    console.log('Voice changed to:', voiceId);
   }
 
   async processConversation(
@@ -44,29 +33,13 @@ export class SimplifiedActionRouter {
   ): Promise<void> {
     if (!userInput.trim()) return;
 
-    console.log('SimplifiedActionRouter: processConversation called with auto-detect:', this.autoDetectLanguage);
-    
-    // Determine voice to use
-    let voiceToUse = this.selectedVoiceId;
-    
-    if (this.autoDetectLanguage) {
-      const detectedVoice = languageDetectionService.autoSelectVoiceForText(userInput);
-      console.log('SimplifiedActionRouter: Auto-detected voice:', detectedVoice);
-      voiceToUse = detectedVoice;
-      // Update selected voice to the detected one for this conversation
-      this.selectedVoiceId = detectedVoice;
-    }
-
-    console.log('SimplifiedActionRouter: Processing conversation with voice:', voiceToUse);
-    console.log('SimplifiedActionRouter: Voice language:', streamingTTSService.getLanguageForVoice(voiceToUse));
-
     try {
       // Quick check for specific actions before going to LLM
       const quickAction = await this.handleQuickActions(userInput);
       if (quickAction) {
         callbacks.onLLMComplete(quickAction.message);
         if (quickAction.speak) {
-          this.handleTTS(quickAction.message, callbacks, voiceToUse);
+          this.handleTTS(quickAction.message, callbacks);
         }
         return;
       }
@@ -74,11 +47,9 @@ export class SimplifiedActionRouter {
       // Reset current response
       this.currentResponse = '';
 
-      console.log('SimplifiedActionRouter: About to call languageAwareLLMService with voice:', voiceToUse);
-
       // Stream language-aware LLM response
       await languageAwareLLMService.generateLanguageAwareResponse(userInput, {
-        voiceId: voiceToUse,
+        voiceId: this.selectedVoiceId,
         onChunk: (chunk: string) => {
           this.currentResponse += chunk;
           callbacks.onLLMChunk(chunk);
@@ -88,7 +59,7 @@ export class SimplifiedActionRouter {
           callbacks.onLLMComplete(fullResponse);
           
           // Start TTS immediately after LLM completes
-          this.handleTTS(fullResponse, callbacks, voiceToUse);
+          this.handleTTS(fullResponse, callbacks);
         },
         onError: callbacks.onError
       });
@@ -161,15 +132,11 @@ export class SimplifiedActionRouter {
     return null;
   }
 
-  private async handleTTS(text: string, callbacks: ConversationCallbacks, voiceId?: string) {
-    const voiceToUse = voiceId || this.selectedVoiceId;
-    console.log('SimplifiedActionRouter: handleTTS called');
-    console.log('SimplifiedActionRouter: Starting TTS with voice:', voiceToUse);
-    console.log('SimplifiedActionRouter: TTS voice language:', streamingTTSService.getLanguageForVoice(voiceToUse));
+  private async handleTTS(text: string, callbacks: ConversationCallbacks) {
     callbacks.onTTSStart();
     
     await streamingTTSService.convertStreamingTextToSpeech(text, {
-      voiceId: voiceToUse,
+      voiceId: this.selectedVoiceId,
       rate: '0%',
       pitch: '0Hz',
       onComplete: () => {
