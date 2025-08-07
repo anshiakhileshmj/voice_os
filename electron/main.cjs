@@ -1,5 +1,5 @@
 
-const { app, BrowserWindow, session } = require('electron');
+const { app, BrowserWindow } = require('electron');
 const path = require('path');
 
 function createWindow () {
@@ -11,38 +11,20 @@ function createWindow () {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
       nodeIntegration: false,
-      // Enable web security but allow speech recognition
-      webSecurity: true,
-      allowRunningInsecureContent: false,
+      // Enable web security and permissions for speech recognition
+      webSecurity: false,
+      allowRunningInsecureContent: true,
       experimentalFeatures: true,
       // Enable microphone access
-      enableRemoteModule: false
+      enableRemoteModule: false,
+      // Additional permissions for speech recognition
+      permissions: ['microphone', 'media']
     }
   });
 
-  // Configure session permissions before loading the page
-  session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
-    const allowedPermissions = ['microphone', 'camera', 'media', 'mediaKeySystem'];
-    if (allowedPermissions.includes(permission)) {
-      console.log(`Granting permission: ${permission}`);
-      callback(true);
-    } else {
-      console.log(`Denying permission: ${permission}`);
-      callback(false);
-    }
-  });
-
-  // Set additional permissions for speech recognition
-  session.defaultSession.setPermissionCheckHandler((webContents, permission, requestingOrigin) => {
-    const allowedPermissions = ['microphone', 'camera', 'media'];
-    return allowedPermissions.includes(permission);
-  });
-
-  // Handle certificate errors for speech recognition API
-  app.on('certificate-error', (event, webContents, url, error, certificate, callback) => {
-    // Allow speech.googleapis.com certificates
-    if (url.includes('googleapis.com') || url.includes('google.com')) {
-      event.preventDefault();
+  // Grant microphone permissions
+  win.webContents.session.setPermissionRequestHandler((webContents, permission, callback) => {
+    if (permission === 'media' || permission === 'microphone') {
       callback(true);
     } else {
       callback(false);
@@ -51,30 +33,17 @@ function createWindow () {
 
   win.loadFile(path.join(__dirname, '../dist/index.html'));
   
-  // Enable DevTools for debugging
+  // Enable DevTools for debugging speech recognition
   // win.webContents.openDevTools();
   
-  // Handle app ready state for speech recognition
-  win.webContents.once('dom-ready', () => {
-    win.webContents.executeJavaScript(`
-      // Ensure speech recognition APIs are available and properly configured
-      console.log('Speech Recognition API available:', !!(window.SpeechRecognition || window.webkitSpeechRecognition));
-      
-      // Override getUserMedia to ensure microphone access
-      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-        console.log('getUserMedia API is available');
-      }
-    `);
-  });
+  // Handle speech recognition API availability
+  win.webContents.executeJavaScript(`
+    // Ensure speech recognition APIs are available
+    if (!window.SpeechRecognition && !window.webkitSpeechRecognition) {
+      console.warn('Speech Recognition API not available in Electron');
+    }
+  `);
 }
-
-// Configure app before ready
-app.commandLine.appendSwitch('enable-speech-dispatcher');
-app.commandLine.appendSwitch('enable-web-speech-api');
-app.commandLine.appendSwitch('enable-features', 'VaapiVideoDecoder');
-app.commandLine.appendSwitch('disable-features', 'OutOfBlinkCors');
-app.commandLine.appendSwitch('disable-web-security');
-app.commandLine.appendSwitch('allow-running-insecure-content');
 
 app.whenReady().then(() => {
   createWindow();
@@ -89,4 +58,11 @@ app.whenReady().then(() => {
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
+});
+
+// Handle microphone permissions
+app.on('ready', () => {
+  // Enable microphone access
+  app.commandLine.appendSwitch('enable-speech-dispatcher');
+  app.commandLine.appendSwitch('enable-web-speech-api');
 });

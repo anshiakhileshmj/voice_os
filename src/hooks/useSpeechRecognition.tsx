@@ -1,7 +1,6 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useToast } from '@/hooks/use-toast';
-import { ElectronSpeechService, ElectronSpeechConfig } from '@/services/electronSpeechService';
 
 interface SpeechRecognitionHook {
   isRecording: boolean;
@@ -16,7 +15,7 @@ export const useSpeechRecognition = (): SpeechRecognitionHook => {
   const [isRecording, setIsRecording] = useState(false);
   const [isSupported, setIsSupported] = useState(true);
   const [currentTranscript, setCurrentTranscript] = useState('');
-  const speechServiceRef = useRef<ElectronSpeechService | null>(null);
+  const recognitionRef = useRef<SpeechRecognition | null>(null);
   const resultCallbackRef = useRef<((transcript: string) => void) | null>(null);
   const { toast } = useToast();
 
@@ -26,64 +25,32 @@ export const useSpeechRecognition = (): SpeechRecognitionHook => {
   }, []);
 
   const checkSpeechSupport = useCallback(() => {
-    const hasWebkit = 'webkitSpeechRecognition' in window;
-    const hasNative = 'SpeechRecognition' in window;
-    return hasWebkit || hasNative;
-  }, []);
-
-  const initializeSpeechService = useCallback(() => {
-    if (!checkSpeechSupport()) {
-      setIsSupported(false);
-      return;
-    }
-
-    const config: ElectronSpeechConfig = {
-      continuous: true,
-      interimResults: true,
-      lang: 'en-US',
-      onResult: (transcript: string) => {
-        console.log('Speech result received:', transcript);
-        if (resultCallbackRef.current) {
-          resultCallbackRef.current(transcript);
-        }
-        setCurrentTranscript('');
-      },
-      onError: (error: string) => {
-        console.error('Speech service error:', error);
-        
-        // Show user-friendly error message
-        if (error.includes('network') || error.includes('Network')) {
-          toast({
-            title: "Speech Recognition Issue",
-            description: isElectron() 
-              ? "Network connection failed. Speech recognition may have limited functionality in Electron. Consider using the web version for better performance."
-              : "Network connection failed. Please check your internet connection.",
-            variant: "destructive"
-          });
-        } else {
-          toast({
-            title: "Speech Recognition Error",
-            description: error,
-            variant: "destructive"
-          });
-        }
-        
-        setIsRecording(false);
-        setCurrentTranscript('');
-      },
-      onStart: () => {
-        console.log('Speech service started');
-        setIsRecording(true);
-      },
-      onEnd: () => {
-        console.log('Speech service ended');
-        setIsRecording(false);
-        setCurrentTranscript('');
+    // Check if we're in Electron
+    if (isElectron()) {
+      // In Electron, check for speech recognition more carefully
+      const hasWebkit = 'webkitSpeechRecognition' in window;
+      const hasNative = 'SpeechRecognition' in window;
+      
+      if (!hasWebkit && !hasNative) {
+        console.warn('Speech recognition not available in Electron environment');
+        return false;
       }
-    };
-
-    speechServiceRef.current = new ElectronSpeechService(config);
-  }, [toast, isElectron, checkSpeechSupport]);
+      
+      // Test if it actually works
+      try {
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        const test = new SpeechRecognition();
+        test.lang = 'en-US';
+        return true;
+      } catch (error) {
+        console.error('Speech recognition test failed:', error);
+        return false;
+      }
+    }
+    
+    // Regular browser check
+    return 'webkitSpeechRecognition' in window || 'SpeechRecognition' in window;
+  }, [isElectron]);
 
   useEffect(() => {
     const supported = checkSpeechSupport();
@@ -93,47 +60,134 @@ export const useSpeechRecognition = (): SpeechRecognitionHook => {
       toast({
         title: "Speech Recognition Unavailable",
         description: isElectron() 
-          ? "Speech recognition is not available in this Electron environment. Please use a supported browser."
+          ? "Speech recognition is not available in this Electron build. Please use the web version for voice features."
           : "Speech recognition is not supported in this browser. Please use Chrome or Edge.",
         variant: "destructive"
       });
       return;
     }
 
-    initializeSpeechService();
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    recognitionRef.current = new SpeechRecognition();
+    
+    if (recognitionRef.current) {
+      recognitionRef.current.continuous = true;
+      recognitionRef.current.interimResults = true;
+      recognitionRef.current.lang = 'en-US';
+
+      recognitionRef.current.addEventListener('start', () => {
+        console.log('Speech recognition started');
+        setIsRecording(true);
+      });
+
+      recognitionRef.current.addEventListener('result', (event: any) => {
+        let finalTranscript = '';
+        let interimTranscript = '';
+
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const transcript = event.results[i][0].transcript;
+          if (event.results[i].isFinal) {
+            finalTranscript += transcript;
+          } else {
+            interimTranscript += transcript;
+          }
+        }
+
+        setCurrentTranscript(interimTranscript);
+
+        if (finalTranscript && resultCallbackRef.current) {
+          resultCallbackRef.current(finalTranscript.trim());
+          setCurrentTranscript('');
+        }
+      });
+
+      recognitionRef.current.addEventListener('error', (event: any) => {
+        console.error('Speech recognition error:', event.error, event);
+        
+        let errorMessage = 'Speech recognition error occurred.';
+        
+        switch (event.error) {
+          case 'network':
+            errorMessage = 'Network error. Please check your internet connection.';
+            break;
+          case 'not-allowed':
+            errorMessage = 'Microphone access denied. Please allow microphone permissions.';
+            break;
+          case 'no-speech':
+            errorMessage = 'No speech detected. Please try speaking again.';
+            break;
+          case 'aborted':
+            errorMessage = 'Speech recognition was aborted.';
+            break;
+          case 'audio-capture':
+            errorMessage = 'Audio capture failed. Please check your microphone.';
+            break;
+          case 'service-not-allowed':
+            errorMessage = 'Speech recognition service not allowed in this environment.';
+            if (isElectron()) {
+              errorMessage += ' This may be due to Electron security restrictions.';
+            }
+            break;
+          default:
+            errorMessage = `Speech recognition error: ${event.error}`;
+        }
+
+        toast({
+          title: "Speech Recognition Error",
+          description: errorMessage,
+          variant: "destructive"
+        });
+        
+        setIsRecording(false);
+        setCurrentTranscript('');
+      });
+
+      recognitionRef.current.addEventListener('end', () => {
+        console.log('Speech recognition ended');
+        setIsRecording(false);
+        setCurrentTranscript('');
+      });
+    }
 
     return () => {
-      if (speechServiceRef.current) {
-        speechServiceRef.current.destroy();
+      if (recognitionRef.current) {
+        recognitionRef.current.stop();
       }
     };
-  }, [toast, isElectron, initializeSpeechService]);
+  }, [toast, isElectron, checkSpeechSupport]);
 
-  const startRecording = useCallback(async () => {
-    if (!speechServiceRef.current || !isSupported) {
+  const startRecording = useCallback(() => {
+    if (!recognitionRef.current || !isSupported) {
       toast({
         title: "Cannot Start Recording",
-        description: "Speech recognition service is not available.",
+        description: isElectron() 
+          ? "Speech recognition is not available in this Electron environment."
+          : "Speech recognition is not supported.",
         variant: "destructive"
       });
       return;
     }
     
-    const success = await speechServiceRef.current.start();
-    if (success) {
+    try {
+      recognitionRef.current.start();
       toast({
         title: "Recording Started",
-        description: isElectron() 
-          ? "Voice recording started. Note: Speech recognition may have limited functionality in Electron."
-          : "Speak naturally. I'm listening and will respond in real-time.",
+        description: "Speak naturally. I'm listening and will respond in real-time.",
+      });
+    } catch (error) {
+      console.error('Error starting recognition:', error);
+      toast({
+        title: "Error",
+        description: "Failed to start recording. Please try again.",
+        variant: "destructive"
       });
     }
   }, [isSupported, toast, isElectron]);
 
   const stopRecording = useCallback(() => {
-    if (speechServiceRef.current) {
-      speechServiceRef.current.stop();
-    }
+    if (!recognitionRef.current) return;
+    
+    recognitionRef.current.stop();
     setIsRecording(false);
     setCurrentTranscript('');
   }, []);
