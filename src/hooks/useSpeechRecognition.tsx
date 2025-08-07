@@ -75,12 +75,12 @@ export const useSpeechRecognition = (): SpeechRecognitionHook => {
       recognitionRef.current.interimResults = true;
       recognitionRef.current.lang = 'en-US';
 
-      recognitionRef.current.onstart = () => {
+      recognitionRef.current.addEventListener('start', () => {
         console.log('Speech recognition started');
         setIsRecording(true);
-      };
+      });
 
-      recognitionRef.current.onresult = (event) => {
+      recognitionRef.current.addEventListener('result', (event: any) => {
         let finalTranscript = '';
         let interimTranscript = '';
 
@@ -99,9 +99,9 @@ export const useSpeechRecognition = (): SpeechRecognitionHook => {
           resultCallbackRef.current(finalTranscript.trim());
           setCurrentTranscript('');
         }
-      };
+      });
 
-      recognitionRef.current.onerror = (event) => {
+      recognitionRef.current.addEventListener('error', (event: any) => {
         console.error('Speech recognition error:', event.error, event);
         
         let errorMessage = 'Speech recognition error occurred.';
@@ -140,13 +140,13 @@ export const useSpeechRecognition = (): SpeechRecognitionHook => {
         
         setIsRecording(false);
         setCurrentTranscript('');
-      };
+      });
 
-      recognitionRef.current.onend = () => {
+      recognitionRef.current.addEventListener('end', () => {
         console.log('Speech recognition ended');
         setIsRecording(false);
         setCurrentTranscript('');
-      };
+      });
     }
 
     return () => {

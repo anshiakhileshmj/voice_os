@@ -2,13 +2,11 @@ import { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Mic, MicOff, Download, Trash2, Volume2, VolumeX, LogOut, Bot } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 import { useSpeechRecognition } from '@/hooks/useSpeechRecognition';
-import { AVAILABLE_VOICES } from '@/services/textToSpeechService';
 import { simplifiedActionRouter } from '@/services/simplifiedActionRouter';
 import { spotifyService } from '@/services/spotifyService';
 import { automateService } from '@/services/automateService';
@@ -29,7 +27,6 @@ const Index = () => {
   const { user, loading, signOut } = useAuth();
   const [transcript, setTranscript] = useState<TranscriptEntry[]>([]);
   const [currentResponse, setCurrentResponse] = useState('');
-  const [selectedVoice, setSelectedVoice] = useState('JBFqnCBsd6RMkjVDRZzb');
   const [isProcessingLLM, setIsProcessingLLM] = useState(false);
   const [isPlayingTTS, setIsPlayingTTS] = useState(false);
   const [isSpotifyConnected, setIsSpotifyConnected] = useState(false);
@@ -40,6 +37,9 @@ const Index = () => {
   const [lastUploadedDocument, setLastUploadedDocument] = useState<any>(null);
   const [fabOpen, setFabOpen] = useState(false);
   const { toast } = useToast();
+
+  // Fixed voice to English US Male
+  const selectedVoice = 'english_us_male';
 
   // Use the new speech recognition hook
   const speechRecognition = useSpeechRecognition();
@@ -385,31 +385,13 @@ const Index = () => {
             <CardTitle className="text-sm">Settings</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div>
-              <label className="text-sm font-medium mb-2 block">Voice Settings</label>
-              <div className="flex items-center gap-4">
-                <div className="flex-1">
-                  <Select value={selectedVoice} onValueChange={setSelectedVoice}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select a voice" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {AVAILABLE_VOICES.map((voice) => (
-                        <SelectItem key={voice.id} value={voice.id}>
-                          {voice.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                {(isPlayingTTS || isProcessingLLM) && (
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <Bot className="w-4 h-4 animate-pulse" />
-                    {isProcessingLLM ? 'Thinking...' : 'Speaking...'}
-                  </div>
-                )}
+            {/* Processing Status */}
+            {(isPlayingTTS || isProcessingLLM) && (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Bot className="w-4 h-4 animate-pulse" />
+                {isProcessingLLM ? 'Thinking...' : 'Speaking...'}
               </div>
-            </div>
+            )}
 
             {/* Automation Status */}
             {isAutomateEnabled && (
