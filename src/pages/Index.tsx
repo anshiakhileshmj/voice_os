@@ -7,6 +7,7 @@ import { Switch } from '@/components/ui/switch';
 import { Mic, MicOff, Download, Trash2, Volume2, VolumeX, LogOut, Bot } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
+import { useSpeechRecognition } from '@/hooks/useSpeechRecognition';
 import { AVAILABLE_VOICES } from '@/services/textToSpeechService';
 import { simplifiedActionRouter } from '@/services/simplifiedActionRouter';
 import { spotifyService } from '@/services/spotifyService';
@@ -26,11 +27,8 @@ interface TranscriptEntry {
 
 const Index = () => {
   const { user, loading, signOut } = useAuth();
-  const [isRecording, setIsRecording] = useState(false);
   const [transcript, setTranscript] = useState<TranscriptEntry[]>([]);
-  const [currentTranscript, setCurrentTranscript] = useState('');
   const [currentResponse, setCurrentResponse] = useState('');
-  const [isSupported, setIsSupported] = useState(true);
   const [selectedVoice, setSelectedVoice] = useState('JBFqnCBsd6RMkjVDRZzb');
   const [isProcessingLLM, setIsProcessingLLM] = useState(false);
   const [isPlayingTTS, setIsPlayingTTS] = useState(false);
@@ -41,8 +39,27 @@ const Index = () => {
   const [userName, setUserName] = useState('');
   const [lastUploadedDocument, setLastUploadedDocument] = useState<any>(null);
   const [fabOpen, setFabOpen] = useState(false);
-  const recognitionRef = useRef<SpeechRecognition | null>(null);
   const { toast } = useToast();
+
+  // Use the new speech recognition hook
+  const speechRecognition = useSpeechRecognition();
+
+  useEffect(() => {
+    // Set up speech recognition result handler
+    speechRecognition.onResult((finalTranscript: string) => {
+      const newEntry: TranscriptEntry = {
+        id: Date.now().toString(),
+        text: finalTranscript,
+        timestamp: new Date(),
+        type: 'user'
+      };
+      
+      setTranscript(prev => [...prev, newEntry]);
+      
+      // Process through streamlined conversation system
+      handleStreamingConversation(finalTranscript);
+    });
+  }, [speechRecognition]);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -129,79 +146,6 @@ const Index = () => {
     checkSpotifyConnection();
   }, [user, toast]);
 
-  useEffect(() => {
-    if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
-      setIsSupported(false);
-      toast({
-        title: "Not Supported",
-        description: "Speech recognition is not supported in this browser. Please use Chrome or Edge.",
-        variant: "destructive"
-      });
-      return;
-    }
-
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    recognitionRef.current = new SpeechRecognition();
-    
-    if (recognitionRef.current) {
-      recognitionRef.current.continuous = true;
-      recognitionRef.current.interimResults = true;
-      recognitionRef.current.lang = 'en-US';
-
-      recognitionRef.current.onresult = (event) => {
-        let finalTranscript = '';
-        let interimTranscript = '';
-
-        for (let i = event.resultIndex; i < event.results.length; i++) {
-          const transcript = event.results[i][0].transcript;
-          if (event.results[i].isFinal) {
-            finalTranscript += transcript;
-          } else {
-            interimTranscript += transcript;
-          }
-        }
-
-        if (finalTranscript) {
-          const newEntry: TranscriptEntry = {
-            id: Date.now().toString(),
-            text: finalTranscript.trim(),
-            timestamp: new Date(),
-            type: 'user'
-          };
-          
-          setTranscript(prev => [...prev, newEntry]);
-          setCurrentTranscript('');
-          
-          // Process through streamlined conversation system
-          handleStreamingConversation(finalTranscript.trim());
-        } else {
-          setCurrentTranscript(interimTranscript);
-        }
-      };
-
-      recognitionRef.current.onerror = (event) => {
-        console.error('Speech recognition error:', event.error);
-        toast({
-          title: "Recognition Error",
-          description: `Error: ${event.error}. Please try again.`,
-          variant: "destructive"
-        });
-        setIsRecording(false);
-      };
-
-      recognitionRef.current.onend = () => {
-        setIsRecording(false);
-        setCurrentTranscript('');
-      };
-    }
-
-    return () => {
-      if (recognitionRef.current) {
-        recognitionRef.current.stop();
-      }
-    };
-  }, [toast]);
-
   const handleStreamingConversation = async (userInput: string) => {
     if (!userInput.trim()) return;
 
@@ -260,31 +204,12 @@ const Index = () => {
   };
 
   const startRecording = () => {
-    if (!recognitionRef.current) return;
-    
-    try {
-      recognitionRef.current.start();
-      setIsRecording(true);
-      toast({
-        title: "Recording Started",
-        description: "Speak naturally. I'm listening and will respond in real-time.",
-      });
-    } catch (error) {
-      console.error('Error starting recognition:', error);
-      toast({
-        title: "Error",
-        description: "Failed to start recording. Please try again.",
-        variant: "destructive"
-      });
-    }
+    speechRecognition.startRecording();
   };
 
   const stopRecording = () => {
-    if (!recognitionRef.current) return;
-    
-    recognitionRef.current.stop();
+    speechRecognition.stopRecording();
     simplifiedActionRouter.stopCurrentConversation();
-    setIsRecording(false);
     setIsProcessingLLM(false);
     setIsPlayingTTS(false);
     toast({
@@ -295,7 +220,6 @@ const Index = () => {
 
   const clearTranscript = () => {
     setTranscript([]);
-    setCurrentTranscript('');
     setCurrentResponse('');
     simplifiedActionRouter.clearConversationHistory();
     toast({
@@ -408,7 +332,7 @@ const Index = () => {
     // Handle through streaming conversation system
     await handleStreamingConversation(promptMessage);
     
-    if (!isRecording) {
+    if (!speechRecognition.isRecording) {
       setTimeout(() => {
         startRecording();
       }, 2000);
@@ -435,16 +359,16 @@ const Index = () => {
     return null;
   }
 
-  if (!isSupported) {
+  if (!speechRecognition.isSupported) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 flex items-center justify-center p-4">
         <Card className="w-full max-w-md">
           <CardHeader>
-            <CardTitle className="text-center text-red-600">Not Supported</CardTitle>
+            <CardTitle className="text-center text-red-600">Speech Recognition Unavailable</CardTitle>
           </CardHeader>
           <CardContent>
             <p className="text-center text-muted-foreground">
-              Speech recognition is not supported in this browser. Please use Chrome, Edge, or another Chromium-based browser.
+              Speech recognition is not available in this environment. This may be due to browser limitations or Electron security restrictions. Please use a compatible browser or the web version for voice features.
             </p>
           </CardContent>
         </Card>
@@ -555,13 +479,13 @@ const Index = () => {
         {/* Animated Call Button Section */}
         <div className="flex justify-center my-8">
           <AnimatedCallButton
-            label={isRecording ? 'End Call' : 'Start Call'}
-            onClick={isRecording ? stopRecording : startRecording}
+            label={speechRecognition.isRecording ? 'End Call' : 'Start Call'}
+            onClick={speechRecognition.isRecording ? stopRecording : startRecording}
           />
         </div>
 
         {/* Live Transcript & Response */}
-        {(currentTranscript || currentResponse || isRecording) && (
+        {(speechRecognition.currentTranscript || currentResponse || speechRecognition.isRecording) && (
           <Card className="border-0 shadow-lg bg-gradient-to-r from-blue-50 to-purple-50 border-blue-200">
             <CardHeader>
               <CardTitle className="text-sm font-medium text-blue-700 flex items-center gap-2">
@@ -570,10 +494,10 @@ const Index = () => {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
-              {currentTranscript && (
+              {speechRecognition.currentTranscript && (
                 <div className="text-lg text-gray-700 leading-relaxed">
                   <span className="text-xs text-muted-foreground">You:</span>
-                  <p>{currentTranscript}</p>
+                  <p>{speechRecognition.currentTranscript}</p>
                 </div>
               )}
               {currentResponse && (
@@ -582,7 +506,7 @@ const Index = () => {
                   <p>{currentResponse}</p>
                 </div>
               )}
-              {isRecording && !currentTranscript && !currentResponse && (
+              {speechRecognition.isRecording && !speechRecognition.currentTranscript && !currentResponse && (
                 <p className="text-lg text-gray-700 min-h-[3rem] leading-relaxed">Listening...</p>
               )}
             </CardContent>
