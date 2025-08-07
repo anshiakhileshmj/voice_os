@@ -1,0 +1,36 @@
+
+# Development files
+node_modules/
+.git/
+.gitignore
+.env*
+*.log
+
+# Build artifacts (keep dist)
+src/
+public/
+*.config.js
+*.config.ts
+tsconfig*.json
+
+# Documentation (keep main README.md)
+docs/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Test files
+__tests__/
+*.test.*
+*.spec.*
+
+# Temporary files
+tmp/
+temp/

@@ -1,41 +1,60 @@
 
+# Voice OS AI
 
-Follow these steps:
+Intelligent voice-controlled automation system powered by Google Gemini AI and Microsoft Edge TTS.
 
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
+## Installation
 
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
-
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
-npm run dev
+```bash
+npm install -g voice-os-ai
 ```
 
-**Edit a file directly in GitHub**
+## Quick Start
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+### 1. Install Dependencies
+```bash
+voice-os-ai setup
+```
+This installs both frontend (React) and backend (Python) dependencies.
 
-**Use GitHub Codespaces**
+### 2. Configure API Key
+```bash
+voice-os-ai api
+```
+- Opens Google Cloud Console automatically
+- Guides you through API key creation
+- Saves your key securely
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+### 3. Launch Voice OS
+```bash
+voice-os-ai
+```
+- Starts Python backend server
+- Launches React frontend
+- Opens browser automatically
 
-## What technologies are used for this project?
+## Commands
 
-This project is built with:
+- `voice-os-ai` - Launch the application
+- `voice-os-ai setup` - Install all dependencies  
+- `voice-os-ai api` - Configure Google API key
+- `voice-os-ai help` - Show help information
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+## Features
+
+- 🎤 Voice-controlled automation
+- 🤖 Google Gemini AI integration
+- 🔊 Microsoft Edge TTS
+- 🌍 Multi-language support
+- 📱 Modern React UI
+- 🐍 Python automation backend
+
+## Requirements
+
+- Node.js 16+
+- Python 3.8+
+- Google API Key (Gemini API)
+
+## License
+
+Proprietary - All rights reserved
