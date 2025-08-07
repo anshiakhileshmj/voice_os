@@ -1,4 +1,3 @@
-
 import { streamingTTSService } from './streamingTTSService';
 import { languageAwareLLMService } from './languageAwareLLMService';
 import { streamingLLMService } from './streamingLLMService';
@@ -16,15 +15,16 @@ export interface ConversationCallbacks {
 export class SimplifiedActionRouter {
   private isAutomateEnabled = false;
   private currentResponse = '';
-  private selectedVoiceId = 'english_us_male'; // Default voice
+  private selectedVoiceId = 'english_us_male'; // Fixed to English US Male
 
   setAutomateEnabled(enabled: boolean) {
     this.isAutomateEnabled = enabled;
   }
 
   setSelectedVoice(voiceId: string) {
-    this.selectedVoiceId = voiceId;
-    console.log('Voice changed to:', voiceId);
+    // Voice is now fixed to english_us_male, but keeping method for compatibility
+    this.selectedVoiceId = 'english_us_male';
+    console.log('Voice is permanently set to:', this.selectedVoiceId);
   }
 
   async processConversation(
