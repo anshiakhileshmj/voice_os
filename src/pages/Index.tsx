@@ -26,12 +26,12 @@ const Index = () => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   
   const {
-    isListening,
-    transcript,
-    startListening,
-    stopListening,
-    hasRecognitionSupport,
-    interimTranscript
+    isRecording,
+    currentTranscript,
+    startRecording,
+    stopRecording,
+    isSupported,
+    onResult
   } = useSpeechRecognition();
 
   useEffect(() => {
@@ -192,22 +192,20 @@ const Index = () => {
   };
 
   const handleVoiceInput = async () => {
-    if (isListening) {
-      stopListening();
-      if (transcript.trim()) {
-        setInput(transcript);
-      }
+    if (isRecording) {
+      stopRecording();
     } else {
       setInput('');
-      startListening();
+      startRecording();
     }
   };
 
+  // Set up the speech recognition result handler
   useEffect(() => {
-    if (transcript && !isListening) {
+    onResult((transcript: string) => {
       setInput(transcript);
-    }
-  }, [transcript, isListening]);
+    });
+  }, [onResult]);
 
   // Check for Spotify callback
   useEffect(() => {
@@ -297,10 +295,10 @@ const Index = () => {
                 </div>
               ))}
               
-              {(isListening && interimTranscript) && (
+              {(isRecording && currentTranscript) && (
                 <div className="flex justify-end">
                   <div className="max-w-xs lg:max-w-md px-4 py-2 rounded-lg bg-blue-600/50 text-white border-2 border-blue-400 animate-pulse">
-                    {interimTranscript}...
+                    {currentTranscript}...
                   </div>
                 </div>
               )}
@@ -339,13 +337,13 @@ const Index = () => {
               />
               
               <div className="flex flex-col gap-2">
-                {hasRecognitionSupport && (
+                {isSupported && (
                   <Button
                     type="button"
                     onClick={handleVoiceInput}
-                    className={`p-3 ${isListening ? 'bg-red-600 hover:bg-red-700 animate-pulse' : 'bg-green-600 hover:bg-green-700'}`}
+                    className={`p-3 ${isRecording ? 'bg-red-600 hover:bg-red-700 animate-pulse' : 'bg-green-600 hover:bg-green-700'}`}
                   >
-                    {isListening ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
+                    {isRecording ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
                   </Button>
                 )}
                 
@@ -374,7 +372,7 @@ const Index = () => {
                 )}
               </div>
               
-              {isListening && (
+              {isRecording && (
                 <div className="flex items-center gap-2">
                   <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
                   <span>Listening...</span>
