@@ -1,4 +1,3 @@
-
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useToast } from '@/hooks/use-toast';
 
@@ -73,13 +72,13 @@ export const useSpeechRecognition = (): SpeechRecognitionHook => {
       
       // Remove maxAlternatives as it's not available on all implementations
 
-      recognitionRef.current.onstart = () => {
+      recognitionRef.current.addEventListener('start', () => {
         console.log('Speech recognition started');
         setIsRecording(true);
         retryCountRef.current = 0;
-      };
+      });
 
-      recognitionRef.current.onresult = (event: SpeechRecognitionEvent) => {
+      recognitionRef.current.addEventListener('result', (event: any) => {
         let finalTranscript = '';
         let interimTranscript = '';
 
@@ -98,9 +97,9 @@ export const useSpeechRecognition = (): SpeechRecognitionHook => {
           resultCallbackRef.current(finalTranscript.trim());
           setCurrentTranscript('');
         }
-      };
+      });
 
-      recognitionRef.current.onerror = (event: SpeechRecognitionErrorEvent) => {
+      recognitionRef.current.addEventListener('error', (event: any) => {
         console.error('Speech recognition error:', event.error, event);
         
         let errorMessage = 'Speech recognition error occurred.';
@@ -165,9 +164,9 @@ export const useSpeechRecognition = (): SpeechRecognitionHook => {
         
         setIsRecording(false);
         setCurrentTranscript('');
-      };
+      });
 
-      recognitionRef.current.onend = () => {
+      recognitionRef.current.addEventListener('end', () => {
         console.log('Speech recognition ended');
         
         // Auto-restart if we're supposed to be recording (unless it was an error)
@@ -187,7 +186,7 @@ export const useSpeechRecognition = (): SpeechRecognitionHook => {
           setIsRecording(false);
           setCurrentTranscript('');
         }
-      };
+      });
     }
   }, [toast, isElectron, checkSpeechSupport, isRecording]);
 
