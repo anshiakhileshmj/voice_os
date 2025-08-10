@@ -2,33 +2,29 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
-import { llmService, ConversationMessage } from '@/services/llmService';
+import { streamingLLMService } from '@/services/streamingLLMService';
 import { locationService } from '@/services/locationService';
-import { documentService } from '@/services/documentService';
 import { toast } from "@/hooks/use-toast";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Textarea } from "@/components/ui/textarea"
-import { Button } from "@/components/ui/button"
-import { Label } from "@/components/ui/label"
-import { FileInput } from '@/components/FileInput';
-import { DocumentList } from '@/components/DocumentList';
+import AnimatedCallButton from '@/components/AnimatedCallButton';
+import FloatingActionButtons from '@/components/FloatingActionButtons';
 import PricingIcon from '@/components/PricingIcon';
 
 const Index = () => {
   const navigate = useNavigate();
   const { user, signOut } = useAuth();
-  const [message, setMessage] = useState('');
+  const [isListening, setIsListening] = useState(false);
   const [response, setResponse] = useState('');
-  const [conversationHistory, setConversationHistory] = useState<ConversationMessage[]>([]);
+  const [isStreaming, setIsStreaming] = useState(false);
   const [locationData, setLocationData] = useState<{ city: string; region: string; country: string }>({
     city: 'Unknown',
     region: 'Unknown',
     country: 'Unknown',
   });
   const [greeting, setGreeting] = useState('');
-  const [isDocumentModalOpen, setIsDocumentModalOpen] = useState(false);
-  const [uploadedDocuments, setUploadedDocuments] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [isSpotifyEnabled, setIsSpotifyEnabled] = useState(false);
+  const [isSpotifyConnected, setIsSpotifyConnected] = useState(false);
+  const [isAutomateEnabled, setIsAutomateEnabled] = useState(false);
+  const [isAutomateConnected, setIsAutomateConnected] = useState(false);
 
   useEffect(() => {
     if (!user) {
@@ -62,139 +58,115 @@ const Index = () => {
       }
     };
 
-    const fetchDocuments = async () => {
-      try {
-        const documents = await documentService.getUserDocuments(user.id);
-        setUploadedDocuments(documents);
-      } catch (error) {
-        console.error('Error fetching documents:', error);
-        toast({
-          title: "Failed to Load Documents",
-          description: "There was an error loading your documents. Please try again later.",
-          variant: "destructive"
-        });
-      }
-    };
-
     fetchLocationAndGreeting();
-    fetchDocuments();
   }, [user, navigate]);
 
-  const handleSignOut = async () => {
+  const handleStartCall = async () => {
+    if (isStreaming) {
+      streamingLLMService.stopStreaming();
+      setIsStreaming(false);
+      setIsListening(false);
+      return;
+    }
+
+    setIsListening(true);
+    setIsStreaming(true);
+    setResponse('');
+
+    // Simulate voice recognition here - you can integrate actual speech recognition
+    const mockUserMessage = "Tell me about the weather";
+
     try {
-      await signOut();
-      navigate('/auth');
+      await streamingLLMService.generateStreamingResponse(mockUserMessage, {
+        onChunk: (chunk: string) => {
+          setResponse(prev => prev + chunk);
+        },
+        onComplete: (fullResponse: string) => {
+          setIsStreaming(false);
+          setIsListening(false);
+          console.log('Streaming complete:', fullResponse);
+        },
+        onError: (error: Error) => {
+          console.error('Streaming error:', error);
+          setIsStreaming(false);
+          setIsListening(false);
+          toast({
+            title: "Error",
+            description: error.message,
+            variant: "destructive"
+          });
+        }
+      });
     } catch (error) {
-      console.error('Sign out error:', error);
+      console.error('Call error:', error);
+      setIsStreaming(false);
+      setIsListening(false);
     }
   };
 
-  const handleSendMessage = async () => {
-    if (!message.trim()) return;
-
-    try {
-      setLoading(true);
-      const { response: llmResponse, updatedHistory } = await llmService.generateResponse(
-        message,
-        conversationHistory
-      );
-
-      setResponse(llmResponse);
-      setConversationHistory(updatedHistory);
-      setMessage('');
-    } catch (error: any) {
-      console.error('LLM error:', error);
-      toast({
-        title: "LLM Error",
-        description: error.message || "Failed to get response from the AI. Please try again.",
-        variant: "destructive"
-      });
-    } finally {
-      setLoading(false);
-    }
+  const handleSpotifyToggle = (enabled: boolean) => {
+    setIsSpotifyEnabled(enabled);
   };
 
-  const handleFileUpload = async (file: File | null) => {
-    if (!file) return;
+  const handleAutomateToggle = (enabled: boolean) => {
+    setIsAutomateEnabled(enabled);
+  };
 
-    try {
-      const uploaded = await documentService.uploadDocument(file, user.id);
-      setUploadedDocuments(prev => [uploaded, ...prev]);
-      toast({
-        title: "File Uploaded",
-        description: `${file.name} has been successfully uploaded.`,
-      });
-    } catch (error: any) {
-      console.error('File upload error:', error);
-      toast({
-        title: "File Upload Error",
-        description: error.message || "Failed to upload the file. Please try again.",
-        variant: "destructive"
-      });
-    }
+  const handleDocumentUpload = (response: string, document?: any) => {
+    toast({
+      title: "Document Uploaded",
+      description: response,
+    });
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 to-black flex flex-col">
+    <div className="min-h-screen bg-gradient-to-br from-gray-900 to-black flex flex-col items-center justify-center relative overflow-hidden">
       <PricingIcon />
-      <header className="p-4 flex justify-between items-center">
-        <div>
-          <h1 className="text-3xl font-semibold text-white">{greeting}</h1>
-          <p className="text-gray-400">
-            {locationData.city}, {locationData.region}, {locationData.country}
-          </p>
-        </div>
-        <Button variant="destructive" onClick={handleSignOut}>Sign Out</Button>
-      </header>
+      
+      {/* Header with greeting and location */}
+      <div className="absolute top-8 left-8 text-white">
+        <h1 className="text-2xl font-semibold">{greeting}</h1>
+        <p className="text-gray-400 text-sm">
+          {locationData.city}, {locationData.region}, {locationData.country}
+        </p>
+      </div>
 
-      <main className="flex-grow p-4">
-        <div className="max-w-4xl mx-auto space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>AI Chat Interface</CardTitle>
-              <CardDescription>
-                Interact with the AI, ask questions, and explore its capabilities.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex space-x-2">
-                <Textarea
-                  placeholder="Enter your message here..."
-                  value={message}
-                  onChange={(e) => setMessage(e.target.value)}
-                  className="flex-grow"
-                />
-                <Button onClick={handleSendMessage} disabled={loading}>
-                  {loading ? "Sending..." : "Send"}
-                </Button>
-              </div>
-              {response && (
-                <div className="mt-4">
-                  <Label>Response:</Label>
-                  <p>{response}</p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+      {/* Main content */}
+      <div className="flex flex-col items-center justify-center flex-1 space-y-8">
+        {/* Animated Call Button */}
+        <AnimatedCallButton 
+          label={isStreaming ? "Stop Call" : "Start Call"} 
+          onClick={handleStartCall} 
+        />
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Document Management</CardTitle>
-              <CardDescription>
-                Upload documents for processing and analysis.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <FileInput onFileSelect={handleFileUpload} />
-              <DocumentList documents={uploadedDocuments} />
-            </CardContent>
-          </Card>
-        </div>
-      </main>
+        {/* Response Display */}
+        {response && (
+          <div className="max-w-2xl mx-auto p-6 bg-black/30 backdrop-blur-lg rounded-2xl border border-white/10">
+            <div className="text-white text-center">
+              <p className="text-lg leading-relaxed">{response}</p>
+            </div>
+          </div>
+        )}
 
-      <footer className="p-4 text-center text-gray-500">
-        <p>&copy; 2024 MJAK AI. All rights reserved.</p>
-      </footer>
+        {/* Status indicator */}
+        {isListening && (
+          <div className="flex items-center space-x-2 text-white/70">
+            <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+            <span className="text-sm">Listening...</span>
+          </div>
+        )}
+      </div>
+
+      {/* Floating Action Buttons */}
+      <FloatingActionButtons
+        isSpotifyEnabled={isSpotifyEnabled}
+        isSpotifyConnected={isSpotifyConnected}
+        isAutomateEnabled={isAutomateEnabled}
+        isAutomateConnected={isAutomateConnected}
+        onSpotifyToggle={handleSpotifyToggle}
+        onAutomateToggle={handleAutomateToggle}
+        onDocumentUpload={handleDocumentUpload}
+      />
     </div>
   );
 };
