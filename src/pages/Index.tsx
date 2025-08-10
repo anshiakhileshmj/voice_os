@@ -1,5 +1,4 @@
 import { useState, useRef, useEffect } from 'react';
-// UI imports removed for simplified layout
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 import { useSpeechRecognition } from '@/hooks/useSpeechRecognition';
@@ -8,9 +7,11 @@ import { simplifiedActionRouter } from '@/services/simplifiedActionRouter';
 import { spotifyService } from '@/services/spotifyService';
 import { automateService } from '@/services/automateService';
 import { supabase } from '@/integrations/supabase/client';
-// Removed DocumentUpload section per UI change
 import AutomatePowerSwitch from '../components/AutomatePowerSwitch';
 import AnimatedCallButton from '../components/AnimatedCallButton';
+import PricingIcon from '../components/PricingIcon';
+import FeedbackModal from '../components/FeedbackModal';
+import { Star, DollarSign } from 'lucide-react';
 
 interface TranscriptEntry {
   id: string;
@@ -32,6 +33,7 @@ const Index = () => {
   const [userName, setUserName] = useState('');
   const [lastUploadedDocument, setLastUploadedDocument] = useState<any>(null);
   const [fabOpen, setFabOpen] = useState(false);
+  const [showFeedbackModal, setShowFeedbackModal] = useState(false);
   const { toast } = useToast();
 
   // Fixed voice to English US Male
@@ -384,6 +386,9 @@ const Index = () => {
   return (
     <div className="min-h-screen" style={{ background: 'rgb(33,33,33)' }}>
       <div className="max-w-4xl mx-auto space-y-6">
+        {/* Pricing Icon - Top Right Corner */}
+        <PricingIcon />
+
         {/* Animated Call Button Section */}
         <div className="fixed inset-0 flex items-center justify-center">
           <AnimatedCallButton
@@ -392,82 +397,110 @@ const Index = () => {
           />
         </div>
 
-        {/* Document Upload section removed; upload now handled by FAB PDF button */}
-
-        {/* Floating Action Button (FAB) and Menu */}
+        {/* Quadrant Circle Floating Action Buttons */}
         <div style={{ position: 'fixed', right: 32, bottom: 32, zIndex: 100 }}>
           <div className="relative flex flex-col items-end">
-            {/* Action Buttons (show when fabOpen) */}
-            <div className={`flex flex-col items-end gap-4 mb-2 transition-all duration-300 ${fabOpen ? 'opacity-100 translate-y-0' : 'opacity-0 pointer-events-none translate-y-4'}`}>
-              {/* Spotify Button */}
-              <button
-                className="w-[60px] h-[60px] flex items-center justify-center p-1 rounded-full border border-green-500/20 bg-[#181818] shadow-lg hover:shadow-green-500/30 hover:scale-110 transition-all duration-300 group"
-                onClick={() => spotifyService.initiateAuth()}
-                title="Connect Spotify"
-              >
-                <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" className="w-7 h-7" fill="#1DB954">
-                  <title>Spotify</title>
-                  <path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z"/>
-                </svg>
-              </button>
-              {/* Automate Button */}
-              <div className="w-[60px] h-[60px] flex items-center justify-center p-1 rounded-full border border-gray-500/20 bg-[#181818] shadow-lg hover:shadow-gray-500/30 hover:scale-110 transition-all duration-300 group">
-                <AutomatePowerSwitch checked={isAutomateEnabled} onChange={handleAutomateToggle} />
+            {/* Action Buttons in Quadrant Circle Layout (show when fabOpen) */}
+            <div className={`absolute bottom-16 right-0 transition-all duration-500 ${fabOpen ? 'opacity-100 scale-100' : 'opacity-0 scale-0 pointer-events-none'}`}>
+              <div className="relative w-32 h-32">
+                {/* Line 1: 90 degree right side upwards - Spotify and Automate */}
+                <button
+                  className="absolute w-12 h-12 flex items-center justify-center rounded-full border border-green-500/20 bg-[#181818] shadow-lg hover:shadow-green-500/30 hover:scale-110 transition-all duration-300"
+                  style={{ top: '10px', right: '10px' }}
+                  onClick={() => spotifyService.initiateAuth()}
+                  title="Connect Spotify"
+                >
+                  <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" className="w-6 h-6" fill="#1DB954">
+                    <path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z"/>
+                  </svg>
+                </button>
+
+                <div 
+                  className="absolute w-12 h-12 flex items-center justify-center rounded-full border border-gray-500/20 bg-[#181818] shadow-lg hover:shadow-gray-500/30 hover:scale-110 transition-all duration-300"
+                  style={{ top: '45px', right: '45px' }}
+                >
+                  <AutomatePowerSwitch checked={isAutomateEnabled} onChange={handleAutomateToggle} />
+                </div>
+
+                {/* Line 2: Center diagonal - Feedback and Pricing */}
+                <button
+                  className="absolute w-12 h-12 flex items-center justify-center rounded-full border border-yellow-500/20 bg-[#181818] shadow-lg hover:shadow-yellow-500/30 hover:scale-110 transition-all duration-300"
+                  style={{ top: '35px', right: '75px' }}
+                  onClick={() => setShowFeedbackModal(true)}
+                  title="Send Feedback"
+                >
+                  <Star className="w-6 h-6 text-yellow-500" />
+                </button>
+
+                <button
+                  className="absolute w-12 h-12 flex items-center justify-center rounded-full border border-purple-500/20 bg-[#181818] shadow-lg hover:shadow-purple-500/30 hover:scale-110 transition-all duration-300"
+                  style={{ top: '70px', right: '40px' }}
+                  onClick={() => window.location.href = '/pricing'}
+                  title="View Pricing"
+                >
+                  <DollarSign className="w-6 h-6 text-purple-500" />
+                </button>
+
+                {/* Line 3: 90 degree downwards - Upload and Logout */}
+                <label 
+                  className="absolute w-12 h-12 flex items-center justify-center rounded-full border border-blue-500/20 bg-[#181818] shadow-lg hover:shadow-blue-500/30 hover:scale-110 transition-all duration-300 cursor-pointer"
+                  style={{ top: '80px', right: '10px' }}
+                  title="Upload Document"
+                >
+                  <input
+                    type="file"
+                    accept=".txt,.pdf"
+                    onChange={async (e) => {
+                      const files = e.target.files;
+                      if (!files || !user) return;
+                      const file = files[0];
+                      if (!(await import('@/services/documentService')).documentService.isFileTypeSupported(file)) {
+                        toast({
+                          title: "Unsupported File Type",
+                          description: "Please upload .txt or .pdf files only.",
+                          variant: "destructive"
+                        });
+                        return;
+                      }
+                      try {
+                        const { documentService } = await import('@/services/documentService');
+                        const uploadedDoc = await documentService.uploadDocument(file, user.id);
+                        setLastUploadedDocument(uploadedDoc);
+                        toast({
+                          title: "Upload Successful",
+                          description: "Should I summarize the file or if you wish anything else let me know."
+                        });
+                        await handleDocumentUpload("Upload successful! Should I summarize the file or if you wish anything else let me know.", uploadedDoc);
+                      } catch (error) {
+                        toast({
+                          title: "Upload Failed",
+                          description: error instanceof Error ? error.message : "Failed to upload document.",
+                          variant: "destructive"
+                        });
+                      } finally {
+                        e.target.value = '';
+                      }
+                    }}
+                    className="hidden"
+                  />
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640" className="w-6 h-6" fill="#3b82f6">
+                    <path d="M128 64C92.7 64 64 92.7 64 128L64 512C64 547.3 92.7 576 128 576L208 576L208 464C208 428.7 236.7 400 272 400L448 400L448 234.5C448 217.5 441.3 201.2 429.3 189.2L322.7 82.7C310.7 70.7 294.5 64 277.5 64L128 64zM389.5 240L296 240C282.7 240 272 229.3 272 216L272 122.5L389.5 240zM272 444C261 444 252 453 252 464L252 592C252 603 261 612 272 612C283 612 292 603 292 592L292 564L304 564C337.1 564 364 537.1 364 504C364 470.9 337.1 444 304 444L272 444zM304 524L292 524L292 484L304 484C315 484 324 493 324 504C324 515 315 524 304 524zM400 444C389 444 380 453 380 464L380 592C380 603 389 612 400 612L432 612C460.7 612 484 588.7 484 560L484 496C484 467.3 460.7 444 432 444L400 444zM420 572L420 484L432 484C438.6 484 444 489.4 444 496L444 560C444 566.6 438.6 572 432 572L420 572zM508 464L508 592C508 603 517 612 528 612C539 612 548 603 548 592L548 548L576 548C587 548 596 539 596 528C596 517 587 508 576 508L548 508L548 484L576 484C587 484 596 475 596 464C596 453 587 444 576 444L528 444C517 444 508 453 508 464z"/>
+                  </svg>
+                </label>
+
+                <button
+                  onClick={handleSignOut}
+                  className="absolute w-12 h-12 flex items-center justify-center rounded-full border border-red-500/20 bg-[#181818] shadow-lg hover:shadow-red-500/30 hover:scale-110 transition-all duration-300"
+                  style={{ top: '115px', right: '45px' }}
+                  title="Logout"
+                >
+                  <svg className="w-6 h-6 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                  </svg>
+                </button>
               </div>
-              {/* Upload Button */}
-              <label className="w-[60px] h-[60px] flex items-center justify-center p-1 rounded-full border border-blue-500/20 bg-[#181818] shadow-lg hover:shadow-blue-500/30 hover:scale-110 transition-all duration-300 group cursor-pointer">
-                <input
-                  type="file"
-                  accept=".txt,.pdf"
-                  onChange={async (e) => {
-                    const files = e.target.files;
-                    if (!files || !user) return;
-                    const file = files[0];
-                    if (!(await import('@/services/documentService')).documentService.isFileTypeSupported(file)) {
-                      toast({
-                        title: "Unsupported File Type",
-                        description: "Please upload .txt or .pdf files only.",
-                        variant: "destructive"
-                      });
-                      return;
-                    }
-                    try {
-                      const { documentService } = await import('@/services/documentService');
-                      const uploadedDoc = await documentService.uploadDocument(file, user.id);
-                      setLastUploadedDocument(uploadedDoc);
-                      toast({
-                        title: "Upload Successful",
-                        description: "Should I summarize the file or if you wish anything else let me know."
-                      });
-                      await handleDocumentUpload("Upload successful! Should I summarize the file or if you wish anything else let me know.", uploadedDoc);
-                    } catch (error) {
-                      toast({
-                        title: "Upload Failed",
-                        description: error instanceof Error ? error.message : "Failed to upload document.",
-                        variant: "destructive"
-                      });
-                    } finally {
-                      e.target.value = '';
-                    }
-                  }}
-                  className="hidden"
-                />
-                {/* Inline SVG PDF icon, blue color */}
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640" className="w-8 h-8" fill="#3b82f6">
-                  <path d="M128 64C92.7 64 64 92.7 64 128L64 512C64 547.3 92.7 576 128 576L208 576L208 464C208 428.7 236.7 400 272 400L448 400L448 234.5C448 217.5 441.3 201.2 429.3 189.2L322.7 82.7C310.7 70.7 294.5 64 277.5 64L128 64zM389.5 240L296 240C282.7 240 272 229.3 272 216L272 122.5L389.5 240zM272 444C261 444 252 453 252 464L252 592C252 603 261 612 272 612C283 612 292 603 292 592L292 564L304 564C337.1 564 364 537.1 364 504C364 470.9 337.1 444 304 444L272 444zM304 524L292 524L292 484L304 484C315 484 324 493 324 504C324 515 315 524 304 524zM400 444C389 444 380 453 380 464L380 592C380 603 389 612 400 612L432 612C460.7 612 484 588.7 484 560L484 496C484 467.3 460.7 444 432 444L400 444zM420 572L420 484L432 484C438.6 484 444 489.4 444 496L444 560C444 566.6 438.6 572 432 572L420 572zM508 464L508 592C508 603 517 612 528 612C539 612 548 603 548 592L548 548L576 548C587 548 596 539 596 528C596 517 587 508 576 508L548 508L548 484L576 484C587 484 596 475 596 464C596 453 587 444 576 444L528 444C517 444 508 453 508 464z"/>
-                </svg>
-              </label>
-              {/* Logout Button */}
-              <button
-                onClick={handleSignOut}
-                className="w-[60px] h-[60px] flex items-center justify-center p-1 rounded-full border border-red-500/20 bg-[#181818] shadow-lg hover:shadow-red-500/30 hover:scale-110 transition-all duration-300 group"
-                title="Logout"
-              >
-                <svg className="w-7 h-7 text-red-500 group-hover:text-red-400 transition-colors duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-                </svg>
-              </button>
             </div>
+
             {/* Main FAB (+) Button */}
             <button
               className={`relative w-[60px] h-[60px] rounded-full bg-[#2e2e2e] shadow-lg flex items-center justify-center transition-all duration-200 ${fabOpen ? 'scale-90' : 'scale-100'}`}
@@ -486,6 +519,11 @@ const Index = () => {
           </div>
         </div>
 
+        {/* Feedback Modal */}
+        <FeedbackModal 
+          isOpen={showFeedbackModal}
+          onClose={() => setShowFeedbackModal(false)}
+        />
       </div>
     </div>
   );
