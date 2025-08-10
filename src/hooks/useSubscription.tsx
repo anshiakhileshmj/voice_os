@@ -42,9 +42,11 @@ export const useSubscription = () => {
   const incrementUsage = async (type: 'voice' | 'automation' | 'document'): Promise<boolean> => {
     if (!user) return false;
 
-    // Check if user can use the feature before incrementing
-    const canUse = await canUseFeature(type);
-    if (!canUse) {
+    const success = await subscriptionService.incrementUsage(user.id, type);
+    if (success) {
+      // Reload usage data
+      loadSubscriptionData();
+    } else {
       const featureNames = {
         voice: 'voice interactions',
         automation: 'automations',
@@ -56,13 +58,6 @@ export const useSubscription = () => {
         description: `You've reached your monthly limit for ${featureNames[type]}. Upgrade your plan to continue.`,
         variant: "destructive"
       });
-      return false;
-    }
-
-    const success = await subscriptionService.incrementUsage(user.id, type);
-    if (success) {
-      // Reload usage data
-      loadSubscriptionData();
     }
     return success;
   };
@@ -93,22 +88,7 @@ export const useSubscription = () => {
 
   const isFeatureAvailable = (featureType: 'voice' | 'automation' | 'document' | 'spotify'): boolean => {
     if (!subscription) return false;
-    
-    const plan = getPlan();
-    if (!plan) return false;
-
-    switch (featureType) {
-      case 'spotify':
-        return plan.features.spotifyIntegration;
-      case 'voice':
-        return plan.features.voiceInteractions === 'unlimited' || (typeof plan.features.voiceInteractions === 'number' && plan.features.voiceInteractions > 0);
-      case 'automation':
-        return plan.features.automations === 'unlimited' || (typeof plan.features.automations === 'number' && plan.features.automations > 0);
-      case 'document':
-        return plan.features.documentsProcessed === 'unlimited' || (typeof plan.features.documentsProcessed === 'number' && plan.features.documentsProcessed > 0);
-      default:
-        return false;
-    }
+    return subscriptionService.isFeatureAvailable(featureType, subscription.tier);
   };
 
   return {

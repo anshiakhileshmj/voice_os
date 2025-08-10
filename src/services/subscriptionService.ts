@@ -85,7 +85,7 @@ export class SubscriptionService {
       if (error && error.code !== 'PGRST116') throw error;
 
       if (!data) {
-        // Create default free subscription
+        // Create default free subscription for new users
         await this.createFreeSubscription(userId);
         return {
           tier: 'free',
@@ -140,7 +140,6 @@ export class SubscriptionService {
         };
       }
 
-      // Map database field names to interface field names
       return {
         voiceInteractions: usage.voice_interactions || 0,
         automationsUsed: usage.automations_used || 0,
@@ -161,6 +160,18 @@ export class SubscriptionService {
     type: 'voice' | 'automation' | 'document'
   ): Promise<boolean> {
     try {
+      // Check if user can use the feature before incrementing
+      const canUse = await this.canUseFeature(userId, type);
+      if (!canUse) {
+        const featureNames = {
+          voice: 'voice interactions',
+          automation: 'automations',
+          document: 'document processing'
+        };
+
+        return false;
+      }
+
       const voiceIncrement = type === 'voice' ? 1 : 0;
       const automationIncrement = type === 'automation' ? 1 : 0;
       const documentIncrement = type === 'document' ? 1 : 0;
@@ -196,17 +207,17 @@ export class SubscriptionService {
       if (!plan) return false;
 
       switch (featureType) {
-        case 'voice':
-          return plan.features.voiceInteractions === 'unlimited' ||
-                 (typeof plan.features.voiceInteractions === 'number' && usage.voiceInteractions < plan.features.voiceInteractions);
-        case 'automation':
-          return plan.features.automations === 'unlimited' ||
-                 (typeof plan.features.automations === 'number' && usage.automationsUsed < plan.features.automations);
-        case 'document':
-          return plan.features.documentsProcessed === 'unlimited' ||
-                 (typeof plan.features.documentsProcessed === 'number' && usage.documentsProcessed < plan.features.documentsProcessed);
         case 'spotify':
           return plan.features.spotifyIntegration;
+        case 'voice':
+          return plan.features.voiceInteractions === 'unlimited' || 
+                 (typeof plan.features.voiceInteractions === 'number' && usage.voiceInteractions < plan.features.voiceInteractions);
+        case 'automation':
+          return plan.features.automations === 'unlimited' || 
+                 (typeof plan.features.automations === 'number' && usage.automationsUsed < plan.features.automations);
+        case 'document':
+          return plan.features.documentsProcessed === 'unlimited' || 
+                 (typeof plan.features.documentsProcessed === 'number' && usage.documentsProcessed < plan.features.documentsProcessed);
         default:
           return false;
       }
@@ -220,10 +231,28 @@ export class SubscriptionService {
     return SUBSCRIPTION_PLANS.find(p => p.id === tier);
   }
 
+  isFeatureAvailable(featureType: 'voice' | 'automation' | 'document' | 'spotify', tier: 'free' | 'starter' | 'pro'): boolean {
+    const plan = SUBSCRIPTION_PLANS.find(p => p.id === tier);
+    if (!plan) return false;
+
+    switch (featureType) {
+      case 'spotify':
+        return plan.features.spotifyIntegration;
+      case 'voice':
+        return plan.features.voiceInteractions === 'unlimited' || (typeof plan.features.voiceInteractions === 'number' && plan.features.voiceInteractions > 0);
+      case 'automation':
+        return plan.features.automations === 'unlimited' || (typeof plan.features.automations === 'number' && plan.features.automations > 0);
+      case 'document':
+        return plan.features.documentsProcessed === 'unlimited' || (typeof plan.features.documentsProcessed === 'number' && plan.features.documentsProcessed > 0);
+      default:
+        return false;
+    }
+  }
+
   async updateSubscription(
     userId: string,
     tier: 'starter' | 'pro',
-    razorpayPaymentId: string
+    paymentId: string
   ): Promise<boolean> {
     try {
       const subscriptionEnd = new Date();

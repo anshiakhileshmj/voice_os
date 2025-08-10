@@ -18,12 +18,12 @@ export class LLMService {
       throw new Error('Message cannot be empty.');
     }
 
-    // Check if user can use voice interactions
+    // Check if user can use voice interactions and enforce limits
     const { data: { user } } = await supabase.auth.getUser();
     if (user) {
       const canUse = await subscriptionService.canUseFeature(user.id, 'voice');
       if (!canUse) {
-        throw new Error('Voice interaction limit reached. Please upgrade your plan to continue.');
+        throw new Error('Voice interaction limit reached. Please upgrade your plan to continue using this feature.');
       }
     }
 
@@ -44,9 +44,13 @@ export class LLMService {
 
         const result = await this.processLLMRequest(finalMessage, conversationHistory);
         
-        // Increment usage after successful response
+        // Increment usage after successful response (only if user is authenticated)
         if (user) {
-          await subscriptionService.incrementUsage(user.id, 'voice');
+          const success = await subscriptionService.incrementUsage(user.id, 'voice');
+          if (!success) {
+            // If increment fails, it means limit was reached during processing
+            throw new Error('Voice interaction limit reached during processing. Please upgrade your plan to continue.');
+          }
         }
         
         this.processingCommand = false;
@@ -63,7 +67,7 @@ export class LLMService {
       this.processingCommand = false;
       console.error('LLM service error:', error);
       if (error instanceof Error) {
-        throw new Error(`Failed to generate LLM response: ${error.message}`);
+        throw new Error(`${error.message}`);
       }
       throw new Error('Failed to generate LLM response: Unknown error');
     }

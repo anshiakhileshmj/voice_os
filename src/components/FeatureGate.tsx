@@ -8,10 +8,16 @@ interface FeatureGateProps {
   feature: 'voice' | 'automation' | 'document' | 'spotify';
   children: ReactNode;
   fallback?: ReactNode;
+  onLimitReached?: () => void;
 }
 
-const FeatureGate: React.FC<FeatureGateProps> = ({ feature, children, fallback }) => {
-  const { isFeatureAvailable, canUseFeature, incrementUsage } = useSubscription();
+const FeatureGate: React.FC<FeatureGateProps> = ({ 
+  feature, 
+  children, 
+  fallback, 
+  onLimitReached 
+}) => {
+  const { isFeatureAvailable, canUseFeature, incrementUsage, subscription } = useSubscription();
   const navigate = useNavigate();
 
   const handleFeatureClick = async () => {
@@ -29,18 +35,29 @@ const FeatureGate: React.FC<FeatureGateProps> = ({ feature, children, fallback }
 
     const canUse = await canUseFeature(feature);
     if (!canUse) {
+      const planName = subscription?.tier || 'current';
       toast({
         title: "Usage Limit Reached",
-        description: "You've reached your monthly limit for this feature. Upgrade your plan to continue.",
+        description: `You've reached your monthly limit for this feature on the ${planName} plan. Upgrade to continue.`,
         variant: "destructive"
       });
+      
+      if (onLimitReached) {
+        onLimitReached();
+      }
+      
       navigate('/pricing');
       return;
     }
 
     // If it's a usage-based feature, increment the counter
     if (feature !== 'spotify') {
-      await incrementUsage(feature);
+      const success = await incrementUsage(feature);
+      if (!success) {
+        // Usage increment failed, likely due to limit reached
+        navigate('/pricing');
+        return;
+      }
     }
   };
 
