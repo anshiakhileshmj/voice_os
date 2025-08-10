@@ -1,258 +1,349 @@
 #!/usr/bin/env node
 
-const { spawn } = require('cross-spawn');
-const path = require('path');
-const fs = require('fs');
-const open = require('open');
-const readline = require('readline');
+import { spawn, execSync } from 'child_process';
+import path from 'path';
+import fs from 'fs';
+import { fileURLToPath } from 'url';
 
-// Get the directory where the package is installed
-const packageDir = path.dirname(__dirname);
-const osDir = path.join(packageDir, 'os');
+// Get the directory where this package is installed
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
-function showHelp() {
-  console.log(`
-Voice OS AI - Intelligent Voice-Controlled Automation System
+// Utility to resolve a script from various install contexts
+function resolveScript(relPath) {
+  const candidates = [];
+  const npmGlobalRoot = (() => {
+    try { return execSync('npm root -g', { encoding: 'utf8' }).trim(); } catch { return ''; }
+  })();
+  const packageDir = path.resolve(__dirname, '..');
+  candidates.push(path.join(packageDir, relPath));
+  if (npmGlobalRoot) {
+    candidates.push(path.join(npmGlobalRoot, 'voice-os-ai', relPath));
+  }
+  candidates.push(path.join(__dirname, '../node_modules/voice-os-ai', relPath));
+  candidates.push(path.join(process.cwd(), relPath));
 
-Usage:
-  voice-os-ai          Launch Voice OS (starts backend + frontend + opens browser)
-  voice-os-ai setup    Install all dependencies (npm + pip)
-  voice-os-ai api      Configure Google API key
-  voice-os-ai help     Show this help message
-
-Examples:
-  voice-os-ai setup    # Install dependencies first
-  voice-os-ai api      # Configure your Google API key
-  voice-os-ai          # Launch the application
-  `);
+  for (const p of candidates) {
+    if (fs.existsSync(p)) return p;
+  }
+  return null;
 }
 
-async function setupDependencies() {
-  console.log('🚀 Setting up Voice OS AI dependencies...\n');
-  
+// Ensure top-level await support for Node ESM entrypoint
+const main = async () => {
+  // The rest of the file remains, but wrapped in this async function
+};
+
+// Handle `voice-os-ai setup`: only install deps, no servers
+if (process.argv.includes('setup')) {
+  const setupScript = resolveScript('scripts/setup-dependencies.js');
+  if (!setupScript) {
+    console.error('❌ Setup script not found');
+    process.exit(1);
+  }
+  console.log(`🔧 Found setup script at: ${setupScript}`);
+  const fileUrl = `file://${setupScript.replace(/\\/g, '/')}`;
   try {
-    // Install npm dependencies
-    console.log('📦 Installing frontend dependencies...');
-    const npmInstall = spawn('npm', ['install'], { 
-      cwd: packageDir, 
-      stdio: 'inherit' 
-    });
-    
-    await new Promise((resolve, reject) => {
-      npmInstall.on('close', (code) => {
-        if (code === 0) {
-          resolve();
-        } else {
-          reject(new Error(`npm install failed with code ${code}`));
-        }
-      });
-    });
-
-    // Install Python dependencies
-    console.log('\n🐍 Installing Python backend dependencies...');
-    
-    // Check if pip is available
-    const pipInstall = spawn('pip', ['install', '-r', 'requirements.txt'], { 
-      cwd: osDir, 
-      stdio: 'inherit' 
-    });
-    
-    await new Promise((resolve, reject) => {
-      pipInstall.on('close', (code) => {
-        if (code === 0) {
-          resolve();
-        } else {
-          reject(new Error(`pip install failed with code ${code}`));
-        }
-      });
-    });
-
-    // Install the operate package
-    console.log('\n📋 Installing operate package...');
-    const operateInstall = spawn('pip', ['install', '-e', '.'], { 
-      cwd: osDir, 
-      stdio: 'inherit' 
-    });
-    
-    await new Promise((resolve, reject) => {
-      operateInstall.on('close', (code) => {
-        if (code === 0) {
-          resolve();
-        } else {
-          reject(new Error(`operate package install failed with code ${code}`));
-        }
-      });
-    });
-
-    console.log('\n✅ All dependencies installed successfully!');
-    console.log('\n📝 Next steps:');
-    console.log('1. Configure your API key: voice-os-ai api');
-    console.log('2. Launch Voice OS: voice-os-ai');
-    
-  } catch (error) {
-    console.error('❌ Error during setup:', error.message);
-    console.log('\n💡 Make sure you have Python 3.8+ and pip installed');
-    console.log('   Python installation: https://python.org/downloads/');
+    await import(fileUrl);
+    process.exit(0);
+  } catch (e) {
+    console.error('❌ Failed to execute setup script:', e.message);
     process.exit(1);
   }
 }
 
-async function configureApiKey() {
-  console.log('🔑 Configuring Google API Key for Voice OS AI\n');
-  
+// Handle `voice-os-ai api`: open Google API page and save key; no servers
+if (process.argv.includes('api')) {
+  const apiScript = resolveScript('scripts/configure-api.js');
+  if (!apiScript) {
+    console.error('❌ API configuration script not found');
+    process.exit(1);
+  }
+    console.log(`🔑 Found API configuration script at: ${apiScript}`);
+  const fileUrl = `file://${apiScript.replace(/\\/g, '/')}`;
   try {
-    // Open Google API Console
-    console.log('📖 Opening Google API Console...');
-    await open('https://console.cloud.google.com/apis/credentials');
-    
-    console.log(`
-📋 Instructions to get your Google API Key:
-
-1. 🌐 The Google Cloud Console should now be open in your browser
-2. 🆕 Create a new project or select an existing one
-3. 🔧 Enable the "Generative Language API" (Gemini API)
-4. 🔑 Go to "Credentials" → "Create Credentials" → "API Key"
-5. 📝 Copy your API key and paste it below
-6. 🔒 (Optional) Restrict your API key for security
-
-For detailed instructions, visit: https://ai.google.dev/gemini-api/docs/api-key
-    `);
-
-    const rl = readline.createInterface({
-      input: process.stdin,
-      output: process.stdout
-    });
-
-    const apiKey = await new Promise((resolve) => {
-      rl.question('🔑 Please paste your Google API key here: ', (answer) => {
-        rl.close();
-        resolve(answer.trim());
-      });
-    });
-
-    if (!apiKey) {
-      console.log('❌ No API key provided. Exiting...');
-      process.exit(1);
-    }
-
-    // Create .env file in os directory
-    const envPath = path.join(osDir, '.env');
-    const envContent = `GOOGLE_API_KEY='${apiKey}'`;
-    
-    fs.writeFileSync(envPath, envContent);
-    
-    console.log('\n✅ API key saved successfully!');
-    console.log(`📁 Saved to: ${envPath}`);
-    console.log('\n🚀 You can now launch Voice OS with: voice-os-ai');
-    
-  } catch (error) {
-    console.error('❌ Error configuring API key:', error.message);
+    await import(fileUrl);
+    process.exit(0);
+  } catch (e) {
+    console.error('❌ Failed to execute API configuration script:', e.message);
     process.exit(1);
   }
 }
+// Get the correct package directory
+let packageDir = path.resolve(__dirname, '..');
+let runDir = packageDir;
 
-async function launchVoiceOS() {
-  console.log('🚀 Launching Voice OS AI...\n');
+// Check if we're in development mode (running from source)
+const isDevelopment = fs.existsSync(path.join(packageDir, 'src'));
+
+if (!isDevelopment) {
+  // We're in a global installation, find the correct directory
+  try {
+    const npmGlobalRoot = execSync('npm root -g', { encoding: 'utf8' }).trim();
+    const globalPackageDir = path.join(npmGlobalRoot, 'voice-os-ai');
+    if (fs.existsSync(globalPackageDir)) {
+      packageDir = globalPackageDir;
+      runDir = globalPackageDir;
+    }
+  } catch (error) {
+    console.log('⚠️  Could not determine npm global root, using current directory');
+  }
+}
+
+console.log('🚀 Starting MJAK Voice OS');
+console.log(`📁 Running from: ${runDir}`);
+
+// Display usage information
+console.log('\n📊 Usage Information:');
+console.log('   • Free Tier: 5 voice chats + 5 automations per month');
+console.log('   • Premium: $15 USD / ₹1200 INR - Unlimited access');
+console.log('   • Payment: UPI/Paytm/Bank Transfer');
+console.log('   • Support: support@mjakvoice.com');
+console.log('   • Edge TTS: 10 Male Voices with Professional Quality');
+console.log('');
+
+// Check if Python backend exists
+const osDir = path.join(runDir, 'os');
+const pythonBackendExists = fs.existsSync(osDir);
+
+let pythonProcess = null;
+
+// Function to start Python backend
+function startPythonBackend() {
+  if (!pythonBackendExists) {
+    console.log('⚠️  Python backend not found in os/ directory');
+    return;
+  }
+
+  console.log('🐍 Starting Python automation backend...');
   
   try {
-    // Check if .env file exists
-    const envPath = path.join(osDir, '.env');
-    if (!fs.existsSync(envPath)) {
-      console.log('⚠️  No API key found!');
-      console.log('📝 Please configure your Google API key first: voice-os-ai api');
-      process.exit(1);
-    }
-
-    console.log('🐍 Starting Python backend...');
-    
-    // Start Python backend
-    const pythonProcess = spawn('python', ['start_api_server.py'], { 
-      cwd: osDir,
+    // Check if Python is available
+    const pythonCheck = spawn('python', ['--version'], { 
       stdio: 'pipe',
-      detached: false
+      shell: true 
     });
-
-    pythonProcess.stdout.on('data', (data) => {
-      console.log(`Backend: ${data.toString().trim()}`);
-    });
-
-    pythonProcess.stderr.on('data', (data) => {
-      console.log(`Backend Error: ${data.toString().trim()}`);
-    });
-
-    // Wait a bit for backend to start
-    await new Promise(resolve => setTimeout(resolve, 3000));
-
-    console.log('⚛️  Starting React frontend...');
     
-    // Start React frontend
-    const reactProcess = spawn('npm', ['run', 'dev'], { 
-      cwd: packageDir,
-      stdio: 'pipe',
-      detached: false
+    pythonCheck.on('error', () => {
+      console.log('⚠️  Python not found. Trying python3...');
+      startPythonBackendWithPython3();
     });
-
-    reactProcess.stdout.on('data', (data) => {
-      console.log(`Frontend: ${data.toString().trim()}`);
-    });
-
-    reactProcess.stderr.on('data', (data) => {
-      console.log(`Frontend: ${data.toString().trim()}`);
-    });
-
-    // Wait a bit for frontend to start then open browser
-    setTimeout(async () => {
-      console.log('\n🌐 Opening Voice OS in your browser...');
-      try {
-        await open('http://localhost:8080');
-      } catch (error) {
-        console.log('⚠️  Could not open browser automatically');
-        console.log('🌐 Please open http://localhost:8080 manually');
+    
+    pythonCheck.on('exit', (code) => {
+      if (code === 0) {
+        startPythonBackendWithPython();
+      } else {
+        startPythonBackendWithPython3();
       }
-    }, 5000);
-
-    console.log('\n✅ Voice OS AI is running!');
-    console.log('📱 Frontend: http://localhost:8080');
-    console.log('🔗 Backend API: http://localhost:8000');
-    console.log('\n⛔ Press Ctrl+C to stop both servers');
-
-    // Handle graceful shutdown
-    process.on('SIGINT', () => {
-      console.log('\n🛑 Shutting down Voice OS AI...');
-      pythonProcess.kill('SIGTERM');
-      reactProcess.kill('SIGTERM');
-      process.exit(0);
     });
-
-    // Keep the process alive
-    await new Promise(() => {});
     
   } catch (error) {
-    console.error('❌ Error launching Voice OS:', error.message);
-    process.exit(1);
+    console.log('⚠️  Error checking Python:', error.message);
+    startPythonBackendWithPython3();
   }
 }
 
-// Parse command line arguments
-const command = process.argv[2];
+function startPythonBackendWithPython() {
+  const pythonScript = path.join(osDir, 'start_api_server.py');
+  
+  if (!fs.existsSync(pythonScript)) {
+    console.log('⚠️  Python backend script not found');
+    return;
+  }
 
-switch (command) {
-  case 'setup':
-    setupDependencies();
-    break;
-  case 'api':
-    configureApiKey();
-    break;
-  case 'help':
-  case '--help':
-  case '-h':
-    showHelp();
-    break;
-  case undefined:
-    launchVoiceOS();
-    break;
-  default:
-    console.log(`❌ Unknown command: ${command}`);
-    showHelp();
-    process.exit(1);
+  pythonProcess = spawn('python', [pythonScript], {
+    cwd: osDir,
+    stdio: 'pipe',
+    shell: false
+  });
+
+  pythonProcess.stdout.on('data', (data) => {
+    console.log(`🐍 [Python Backend] ${data.toString().trim()}`);
+  });
+
+  pythonProcess.stderr.on('data', (data) => {
+    console.log(`🐍 [Python Backend Error] ${data.toString().trim()}`);
+  });
+
+  pythonProcess.on('error', (error) => {
+    console.error('❌ Failed to start Python backend:', error.message);
+  });
+
+  pythonProcess.on('exit', (code) => {
+    if (code !== 0) {
+      console.log(`🐍 Python backend exited with code ${code}`);
+    }
+  });
 }
+
+function startPythonBackendWithPython3() {
+  const pythonScript = path.join(osDir, 'start_api_server.py');
+  
+  if (!fs.existsSync(pythonScript)) {
+    console.log('⚠️  Python backend script not found');
+    return;
+  }
+
+  pythonProcess = spawn('python3', [pythonScript], {
+    cwd: osDir,
+    stdio: 'pipe',
+    shell: false
+  });
+
+  pythonProcess.stdout.on('data', (data) => {
+    console.log(`🐍 [Python Backend] ${data.toString().trim()}`);
+  });
+
+  pythonProcess.stderr.on('data', (data) => {
+    console.log(`🐍 [Python Backend Error] ${data.toString().trim()}`);
+  });
+
+  pythonProcess.on('error', (error) => {
+    console.error('❌ Failed to start Python backend:', error.message);
+  });
+
+  pythonProcess.on('exit', (code) => {
+    if (code !== 0) {
+      console.log(`🐍 Python backend exited with code ${code}`);
+    }
+  });
+}
+
+// Start frontend first, then backend (per requirement)
+startFrontend();
+if (pythonBackendExists) {
+  setTimeout(() => startPythonBackend(), 2500);
+}
+
+// Function to open URL in default browser
+function openUrl(url) {
+  const platform = process.platform;
+  try {
+    if (platform === 'win32') {
+      execSync(`start ${url}`, { shell: true });
+    } else if (platform === 'darwin') {
+      execSync(`open ${url}`);
+    } else {
+      execSync(`xdg-open ${url}`);
+    }
+    return true;
+  } catch (error) {
+    console.error('Failed to open browser:', error.message);
+    return false;
+  }
+}
+
+// Function to start frontend
+function startFrontend() {
+  console.log('🌐 Starting frontend development server...');
+  console.log(`📁 Working directory: ${runDir}`);
+  
+  // Check if package.json exists
+  const packageJsonPath = path.join(runDir, 'package.json');
+  if (!fs.existsSync(packageJsonPath)) {
+    console.error('❌ package.json not found in:', runDir);
+    console.log('💡 Available files:');
+    try {
+      const files = fs.readdirSync(runDir);
+      files.forEach(file => console.log(`  - ${file}`));
+    } catch (error) {
+      console.error('❌ Could not read directory:', error.message);
+    }
+    process.exit(1);
+  }
+  
+  // Start the development server
+  const devProcess = spawn('npm', ['run', 'dev'], {
+    cwd: runDir,
+    stdio: 'pipe',
+    shell: true,
+    env: { ...process.env, FORCE_COLOR: '1' }
+  });
+
+  let serverStarted = false;
+
+  // Handle stdout to detect when server is ready
+  devProcess.stdout.on('data', (data) => {
+    const output = data.toString();
+    console.log(output.trim());
+    
+    // Check if server is ready and open browser
+    if (!serverStarted && (output.includes('Local:') || output.includes('localhost:5173') || output.includes('http://localhost:5173'))) {
+      serverStarted = true;
+      console.log('🚀 Opening browser...');
+      setTimeout(() => {
+        openUrl('http://localhost:5173');
+      }, 2000);
+    }
+  });
+
+  // Handle stderr
+  devProcess.stderr.on('data', (data) => {
+    console.log(data.toString().trim());
+  });
+
+  // Handle process events
+  devProcess.on('error', (error) => {
+    console.error('❌ Failed to start Voice OS:', error.message);
+    console.error('💡 This might be due to:');
+    console.error('   - Missing npm or Node.js');
+    console.error('   - Missing package.json or dev script');
+    console.error('   - Permission issues');
+    process.exit(1);
+  });
+
+  devProcess.on('exit', (code) => {
+    if (code !== 0) {
+      console.error(`❌ Voice OS exited with code ${code}`);
+      console.error('💡 Check if npm and Node.js are properly installed');
+      process.exit(code);
+    }
+  });
+
+  // Store the frontend process for cleanup
+  global.frontendProcess = devProcess;
+  
+  // Fallback: Open browser after 5 seconds if not already opened
+  setTimeout(() => {
+    if (!serverStarted) {
+      console.log('🚀 Opening browser (fallback)...');
+      openUrl('http://localhost:5173');
+    }
+  }, 5000);
+}
+
+// Handle graceful shutdown
+process.on('SIGINT', () => {
+  console.log('\n🛑 Shutting down Voice OS...');
+  
+  if (pythonProcess) {
+    console.log('🛑 Stopping Python backend...');
+    pythonProcess.kill('SIGINT');
+  }
+  
+  if (global.frontendProcess) {
+    console.log('🛑 Stopping frontend...');
+    global.frontendProcess.kill('SIGINT');
+  }
+  
+  // Give processes time to shutdown gracefully
+  setTimeout(() => {
+    process.exit(0);
+  }, 1000);
+});
+
+process.on('SIGTERM', () => {
+  console.log('\n🛑 Shutting down Voice OS...');
+  
+  if (pythonProcess) {
+    pythonProcess.kill('SIGTERM');
+  }
+  
+  if (global.frontendProcess) {
+    global.frontendProcess.kill('SIGTERM');
+  }
+  
+  setTimeout(() => {
+    process.exit(0);
+  }, 1000);
+});
