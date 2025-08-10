@@ -23,8 +23,8 @@ const StyledWrapper = styled.div`
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 270px;
-    height: 270px;
+    width: 350px;
+    height: 350px;
     font-family: "Inter", sans-serif;
     font-size: 1.8em;
     font-weight: 300;
@@ -79,8 +79,8 @@ const StyledWrapper = styled.div`
     border-radius: 50px;
     background-color: transparent;
     border: 2px solid white;
-    padding: 0.6em 1.5em;
-    font-size: 0.8em;
+    padding: 0.6em 1.7em;
+    font-size: 1.1em;
     cursor: pointer;
     transition:
       background 0.3s,
