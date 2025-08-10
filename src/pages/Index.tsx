@@ -11,7 +11,6 @@ import { supabase } from '@/integrations/supabase/client';
 // Removed DocumentUpload section per UI change
 import AutomatePowerSwitch from '../components/AutomatePowerSwitch';
 import AnimatedCallButton from '../components/AnimatedCallButton';
-import PricingIcon from '@/components/PricingIcon';
 
 interface TranscriptEntry {
   id: string;
