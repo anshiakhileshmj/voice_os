@@ -1,6 +1,6 @@
-
 import { supabase } from '@/integrations/supabase/client';
 import { commandSequencer } from './commandSequencer';
+import { subscriptionService } from './subscriptionService';
 
 export interface ConversationMessage {
   role: 'user' | 'assistant' | 'system';
@@ -16,6 +16,15 @@ export class LLMService {
   ): Promise<{ response: string; updatedHistory: ConversationMessage[] }> {
     if (!userMessage.trim()) {
       throw new Error('Message cannot be empty.');
+    }
+
+    // Check if user can use voice interactions
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      const canUse = await subscriptionService.canUseFeature(user.id, 'voice');
+      if (!canUse) {
+        throw new Error('Voice interaction limit reached. Please upgrade your plan to continue.');
+      }
     }
 
     try {
@@ -34,6 +43,12 @@ export class LLMService {
           : userMessage;
 
         const result = await this.processLLMRequest(finalMessage, conversationHistory);
+        
+        // Increment usage after successful response
+        if (user) {
+          await subscriptionService.incrementUsage(user.id, 'voice');
+        }
+        
         this.processingCommand = false;
         return result;
       } else {

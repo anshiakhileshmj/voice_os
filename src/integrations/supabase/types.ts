@@ -109,6 +109,42 @@ export type Database = {
         }
         Relationships: []
       }
+      subscribers: {
+        Row: {
+          created_at: string
+          email: string
+          id: string
+          razorpay_customer_id: string | null
+          subscribed: boolean
+          subscription_end: string | null
+          subscription_tier: string | null
+          updated_at: string
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          email: string
+          id?: string
+          razorpay_customer_id?: string | null
+          subscribed?: boolean
+          subscription_end?: string | null
+          subscription_tier?: string | null
+          updated_at?: string
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          email?: string
+          id?: string
+          razorpay_customer_id?: string | null
+          subscribed?: boolean
+          subscription_end?: string | null
+          subscription_tier?: string | null
+          updated_at?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       transcription_sessions: {
         Row: {
           audio_url: string | null
@@ -163,6 +199,69 @@ export type Database = {
         }
         Relationships: []
       }
+      user_preferences: {
+        Row: {
+          ai_name: string
+          created_at: string
+          id: string
+          updated_at: string
+          user_id: string
+          voice_gender: string
+          voice_id: string
+        }
+        Insert: {
+          ai_name?: string
+          created_at?: string
+          id?: string
+          updated_at?: string
+          user_id: string
+          voice_gender?: string
+          voice_id?: string
+        }
+        Update: {
+          ai_name?: string
+          created_at?: string
+          id?: string
+          updated_at?: string
+          user_id?: string
+          voice_gender?: string
+          voice_id?: string
+        }
+        Relationships: []
+      }
+      user_usage: {
+        Row: {
+          automations_used: number
+          created_at: string
+          documents_processed: number
+          id: string
+          month_year: string
+          updated_at: string
+          user_id: string | null
+          voice_interactions: number
+        }
+        Insert: {
+          automations_used?: number
+          created_at?: string
+          documents_processed?: number
+          id?: string
+          month_year: string
+          updated_at?: string
+          user_id?: string | null
+          voice_interactions?: number
+        }
+        Update: {
+          automations_used?: number
+          created_at?: string
+          documents_processed?: number
+          id?: string
+          month_year?: string
+          updated_at?: string
+          user_id?: string | null
+          voice_interactions?: number
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
@@ -175,6 +274,23 @@ export type Database = {
       cleanup_pdf_conversations: {
         Args: Record<PropertyKey, never>
         Returns: undefined
+      }
+      get_current_month_usage: {
+        Args: { p_user_id: string }
+        Returns: {
+          voice_interactions: number
+          automations_used: number
+          documents_processed: number
+        }[]
+      }
+      increment_usage: {
+        Args: {
+          p_user_id: string
+          p_voice_interactions?: number
+          p_automations?: number
+          p_documents?: number
+        }
+        Returns: boolean
       }
     }
     Enums: {
