@@ -131,10 +131,20 @@ export class SubscriptionService {
 
       if (error) throw error;
 
-      return data[0] || {
-        voiceInteractions: 0,
-        automationsUsed: 0,
-        documentsProcessed: 0,
+      const usage = data[0];
+      if (!usage) {
+        return {
+          voiceInteractions: 0,
+          automationsUsed: 0,
+          documentsProcessed: 0,
+        };
+      }
+
+      // Map database field names to interface field names
+      return {
+        voiceInteractions: usage.voice_interactions || 0,
+        automationsUsed: usage.automations_used || 0,
+        documentsProcessed: usage.documents_processed || 0,
       };
     } catch (error) {
       console.error('Error getting current usage:', error);
@@ -188,13 +198,13 @@ export class SubscriptionService {
       switch (featureType) {
         case 'voice':
           return plan.features.voiceInteractions === 'unlimited' ||
-                 usage.voiceInteractions < plan.features.voiceInteractions;
+                 (typeof plan.features.voiceInteractions === 'number' && usage.voiceInteractions < plan.features.voiceInteractions);
         case 'automation':
           return plan.features.automations === 'unlimited' ||
-                 usage.automationsUsed < plan.features.automations;
+                 (typeof plan.features.automations === 'number' && usage.automationsUsed < plan.features.automations);
         case 'document':
           return plan.features.documentsProcessed === 'unlimited' ||
-                 usage.documentsProcessed < plan.features.documentsProcessed;
+                 (typeof plan.features.documentsProcessed === 'number' && usage.documentsProcessed < plan.features.documentsProcessed);
         case 'spotify':
           return plan.features.spotifyIntegration;
         default:

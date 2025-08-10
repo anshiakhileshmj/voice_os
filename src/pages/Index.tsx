@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
@@ -46,15 +47,18 @@ const Index = () => {
 
         const shouldGreet = await locationService.shouldGreetUser(user.id);
         if (shouldGreet) {
-          const newGreeting = locationService.getGreeting(location.timezone, user.name || 'User');
+          const userDisplayName = user.email?.split('@')[0] || 'User';
+          const newGreeting = locationService.getGreeting(location.timezone, userDisplayName);
           setGreeting(newGreeting);
           await locationService.updateLastGreeted(user.id);
         } else {
-          setGreeting(`Welcome back, ${user.name || 'User'}`);
+          const userDisplayName = user.email?.split('@')[0] || 'User';
+          setGreeting(`Welcome back, ${userDisplayName}`);
         }
       } catch (error) {
         console.error('Error fetching location and greeting:', error);
-        setGreeting(`Hello, ${user.name || 'User'}`);
+        const userDisplayName = user.email?.split('@')[0] || 'User';
+        setGreeting(`Hello, ${userDisplayName}`);
       }
     };
 

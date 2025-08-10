@@ -81,13 +81,13 @@ export const useSubscription = () => {
     return {
       voice: plan.features.voiceInteractions === 'unlimited' 
         ? 'unlimited' 
-        : Math.max(0, plan.features.voiceInteractions - usage.voiceInteractions),
+        : Math.max(0, (typeof plan.features.voiceInteractions === 'number' ? plan.features.voiceInteractions : 0) - usage.voiceInteractions),
       automation: plan.features.automations === 'unlimited'
         ? 'unlimited'
-        : Math.max(0, plan.features.automations - usage.automationsUsed),
+        : Math.max(0, (typeof plan.features.automations === 'number' ? plan.features.automations : 0) - usage.automationsUsed),
       document: plan.features.documentsProcessed === 'unlimited'
         ? 'unlimited'
-        : Math.max(0, plan.features.documentsProcessed - usage.documentsProcessed),
+        : Math.max(0, (typeof plan.features.documentsProcessed === 'number' ? plan.features.documentsProcessed : 0) - usage.documentsProcessed),
     };
   };
 
@@ -101,11 +101,11 @@ export const useSubscription = () => {
       case 'spotify':
         return plan.features.spotifyIntegration;
       case 'voice':
-        return plan.features.voiceInteractions > 0 || plan.features.voiceInteractions === 'unlimited';
+        return plan.features.voiceInteractions === 'unlimited' || (typeof plan.features.voiceInteractions === 'number' && plan.features.voiceInteractions > 0);
       case 'automation':
-        return plan.features.automations > 0 || plan.features.automations === 'unlimited';
+        return plan.features.automations === 'unlimited' || (typeof plan.features.automations === 'number' && plan.features.automations > 0);
       case 'document':
-        return plan.features.documentsProcessed > 0 || plan.features.documentsProcessed === 'unlimited';
+        return plan.features.documentsProcessed === 'unlimited' || (typeof plan.features.documentsProcessed === 'number' && plan.features.documentsProcessed > 0);
       default:
         return false;
     }

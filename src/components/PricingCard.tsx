@@ -14,18 +14,18 @@ const PricingCard: React.FC<PricingCardProps> = ({ plan, onSelectPlan, isCurrent
     {
       name: 'Voice Interactions',
       value: plan.features.voiceInteractions === 'unlimited' ? 'Unlimited' : `${plan.features.voiceInteractions}/month`,
-      included: plan.features.voiceInteractions > 0 || plan.features.voiceInteractions === 'unlimited'
+      included: plan.features.voiceInteractions === 'unlimited' || (typeof plan.features.voiceInteractions === 'number' && plan.features.voiceInteractions > 0)
     },
     {
       name: 'Automations',
       value: plan.features.automations === 'unlimited' ? 'Unlimited' : `${plan.features.automations}/month`,
-      included: plan.features.automations > 0 || plan.features.automations === 'unlimited'
+      included: plan.features.automations === 'unlimited' || (typeof plan.features.automations === 'number' && plan.features.automations > 0)
     },
     {
       name: 'Document Processing',
       value: plan.features.documentsProcessed === 'unlimited' ? 'Unlimited' : 
              plan.features.documentsProcessed === 0 ? 'Not included' : `${plan.features.documentsProcessed}/month`,
-      included: plan.features.documentsProcessed > 0 || plan.features.documentsProcessed === 'unlimited'
+      included: plan.features.documentsProcessed === 'unlimited' || (typeof plan.features.documentsProcessed === 'number' && plan.features.documentsProcessed > 0)
     },
     {
       name: 'Spotify Integration',
