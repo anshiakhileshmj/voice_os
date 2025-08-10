@@ -402,11 +402,11 @@ const Index = () => {
           <div className="relative flex flex-col items-end">
             {/* Action Buttons in Quadrant Circle Layout (show when fabOpen) */}
             <div className={`absolute bottom-16 right-0 transition-all duration-500 ${fabOpen ? 'opacity-100 scale-100' : 'opacity-0 scale-0 pointer-events-none'}`}>
-              <div className="relative w-32 h-32">
+              <div className="relative w-40 h-40">
                 {/* Line 1: 90 degree right side upwards - Spotify and Automate */}
                 <button
                   className="absolute w-12 h-12 flex items-center justify-center rounded-full border border-green-500/20 bg-[#181818] shadow-lg hover:shadow-green-500/30 hover:scale-110 transition-all duration-300"
-                  style={{ top: '10px', right: '10px' }}
+                  style={{ top: '5px', right: '5px' }}
                   onClick={() => spotifyService.initiateAuth()}
                   title="Connect Spotify"
                 >
@@ -417,7 +417,7 @@ const Index = () => {
 
                 <div 
                   className="absolute w-12 h-12 flex items-center justify-center rounded-full border border-gray-500/20 bg-[#181818] shadow-lg hover:shadow-gray-500/30 hover:scale-110 transition-all duration-300"
-                  style={{ top: '45px', right: '45px' }}
+                  style={{ top: '35px', right: '35px' }}
                 >
                   <AutomatePowerSwitch checked={isAutomateEnabled} onChange={handleAutomateToggle} />
                 </div>
@@ -425,7 +425,7 @@ const Index = () => {
                 {/* Line 2: Center diagonal - Feedback and Pricing */}
                 <button
                   className="absolute w-12 h-12 flex items-center justify-center rounded-full border border-yellow-500/20 bg-[#181818] shadow-lg hover:shadow-yellow-500/30 hover:scale-110 transition-all duration-300"
-                  style={{ top: '35px', right: '75px' }}
+                  style={{ top: '50px', right: '70px' }}
                   onClick={() => setShowFeedbackModal(true)}
                   title="Send Feedback"
                 >
@@ -434,7 +434,7 @@ const Index = () => {
 
                 <button
                   className="absolute w-12 h-12 flex items-center justify-center rounded-full border border-purple-500/20 bg-[#181818] shadow-lg hover:shadow-purple-500/30 hover:scale-110 transition-all duration-300"
-                  style={{ top: '70px', right: '40px' }}
+                  style={{ top: '70px', right: '50px' }}
                   onClick={() => window.location.href = '/pricing'}
                   title="View Pricing"
                 >
@@ -444,7 +444,7 @@ const Index = () => {
                 {/* Line 3: 90 degree downwards - Upload and Logout */}
                 <label 
                   className="absolute w-12 h-12 flex items-center justify-center rounded-full border border-blue-500/20 bg-[#181818] shadow-lg hover:shadow-blue-500/30 hover:scale-110 transition-all duration-300 cursor-pointer"
-                  style={{ top: '80px', right: '10px' }}
+                  style={{ bottom: '5px', right: '35px' }}
                   title="Upload Document"
                 >
                   <input
@@ -491,7 +491,7 @@ const Index = () => {
                 <button
                   onClick={handleSignOut}
                   className="absolute w-12 h-12 flex items-center justify-center rounded-full border border-red-500/20 bg-[#181818] shadow-lg hover:shadow-red-500/30 hover:scale-110 transition-all duration-300"
-                  style={{ top: '115px', right: '45px' }}
+                  style={{ bottom: '5px', right: '5px' }}
                   title="Logout"
                 >
                   <svg className="w-6 h-6 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
