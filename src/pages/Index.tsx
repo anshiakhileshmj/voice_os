@@ -379,9 +379,9 @@ const Index = () => {
       <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 flex items-center justify-center p-4">
         <div className="w-full max-w-md rounded-lg shadow-lg bg-white/90 p-6">
           <h2 className="text-center text-red-600 font-semibold mb-3">Speech Recognition Unavailable</h2>
-          <p className="text-center text-muted-foreground">
-            Speech recognition is not available in this environment. This may be due to browser limitations or Electron security restrictions. Please use a compatible browser or the web version for voice features.
-          </p>
+            <p className="text-center text-muted-foreground">
+              Speech recognition is not available in this environment. This may be due to browser limitations or Electron security restrictions. Please use a compatible browser or the web version for voice features.
+            </p>
         </div>
       </div>
     );
@@ -508,10 +508,30 @@ const Index = () => {
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" className="w-8 h-8" fill="#facc15"><path d="M20 2H4a2 2 0 0 0-2 2v14l4-4h14a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2z"/><path d="M12 6l1.176 2.381L16 8.764l-2 1.953.471 2.748L12 12.764l-2.471 1.701L10 10.717 8 8.764l2.824-.383L12 6z" fill="#0f172a"/></svg>
             </button>
           </div>
-          {/* Pricing diagonal (54,-54) */}
+          {/* Pricing diagonal (icon-only inside black button with gradient hover overlay) */}
           <div className="absolute bottom-0 left-0" style={{ transform: `translate(${fabLeftOpen ? 69 : 0}px, ${fabLeftOpen ? -69 : 0}px)`, opacity: fabLeftOpen ? 1 : 0, pointerEvents: fabLeftOpen ? 'auto' : 'none', transition: 'transform 250ms ease, opacity 250ms ease' }}>
-            <button onClick={() => navigate('/pricing')} title="Pricing" className="w-[60px] h-[60px] flex items-center justify-center p-1 rounded-full border border-blue-500/20 bg-[#181818] shadow-lg hover:shadow-blue-500/30 hover:scale-110 transition-all duration-300 group">
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" className="w-8 h-8" fill="#3b82f6"><path d="M21.41 11.58l-9-9A2 2 0 0 0 11 2H4a2 2 0 0 0-2 2v7a2 2 0 0 0 .59 1.41l9 9a2 2 0 0 0 2.82 0l7-7a2 2 0 0 0 0-2.83zM7.5 8A1.5 1.5 0 1 1 9 6.5 1.5 1.5 0 0 1 7.5 8z"/></svg>
+            <button
+              onClick={() => navigate('/pricing')}
+              aria-label="Pricing"
+              className="relative group w-[60px] h-[60px] flex items-center justify-center rounded-full border border-white/10 bg-[#181818] shadow-lg hover:scale-110 transition-all duration-300"
+            >
+              <span
+                className="absolute inset-0 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                style={{
+                  background:
+                    'linear-gradient(15deg,#880088,#aa2068,#cc3f47,#de6f3d,#f09f33,#de6f3d,#cc3f47,#aa2068,#880088)'
+                }}
+              />
+              <svg className="relative z-10" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 36 24" width="23" height="23">
+                <defs>
+                  <linearGradient id="priceGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+                    <stop offset="0%" stopColor="#880088" />
+                    <stop offset="35%" stopColor="#cc3f47" />
+                    <stop offset="70%" stopColor="#f09f33" />
+                  </linearGradient>
+                </defs>
+                <path d="m18 0 8 12 10-8-4 20H4L0 4l10 8 8-12z" fill="url(#priceGrad)" />
+              </svg>
             </button>
           </div>
           {/* Logout right (120,0) */}
