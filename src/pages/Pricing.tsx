@@ -124,27 +124,11 @@ const Pricing: React.FC = () => {
             Choose Your Plan
           </h1>
           <p className="text-xl text-gray-300 max-w-2xl mx-auto">
-            Unlock the full potential of your AI assistant with our flexible pricing plans
+            Unlock the full potential of MJAK AI assistant with our flexible pricing plans
           </p>
         </div>
 
-        {currentSubscription && (
-          <Card className="max-w-md mx-auto mb-8 bg-gray-800 border-gray-700">
-            <CardHeader>
-              <CardTitle className="text-white text-center">Current Plan</CardTitle>
-            </CardHeader>
-            <CardContent className="text-center">
-              <p className="text-green-400 font-semibold text-lg capitalize">
-                {currentSubscription.tier} Plan
-              </p>
-              {currentSubscription.subscriptionEnd && (
-                <p className="text-gray-400 text-sm mt-2">
-                  Renews on: {new Date(currentSubscription.subscriptionEnd).toLocaleDateString()}
-                </p>
-              )}
-            </CardContent>
-          </Card>
-        )}
+        {/* Current Plan card removed as requested */}
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8 justify-items-center max-w-6xl mx-auto">
           {SUBSCRIPTION_PLANS.map((plan) => (
@@ -158,7 +142,7 @@ const Pricing: React.FC = () => {
         </div>
 
         <div className="text-center mt-12">
-          <p className="text-gray-400 text-sm max-w-2xl mx-auto">
+          <p className="text-gray-400 text-sm max-w-2.5xl mx-auto">
             All plans include premium TTS voice quality, context memory, and email support. 
             Cancel anytime. No hidden fees.
           </p>
