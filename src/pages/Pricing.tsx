@@ -80,7 +80,7 @@ const Pricing: React.FC = () => {
           className="mb-8 flex items-center gap-2 text-gray-300 hover:text-white transition-colors duration-300"
         >
           <ArrowLeft size={20} />
-          <span>Back to App</span>
+          
         </button>
 
         <div className="text-center mb-12">
@@ -101,13 +101,6 @@ const Pricing: React.FC = () => {
               isCurrentPlan={currentSubscription?.tier === plan.id}
             />
           ))}
-        </div>
-
-        <div className="text-center mt-12">
-          <p className="text-gray-400 text-sm max-w-2.5xl mx-auto">
-            All plans include premium TTS voice quality, context memory, and email support. 
-            Cancel anytime. No hidden fees.
-          </p>
         </div>
       </div>
     </div>
