@@ -403,69 +403,32 @@ const Index = () => {
         {/* Floating Action Button (FAB) and Menu */}
         <div style={{ position: 'fixed', right: 32, bottom: 32, zIndex: 100 }}>
           <div className="relative flex flex-col items-end">
-            {/* Spotify at (-54, -54) diagonal */}
-            <div className="absolute bottom-0 right-0" style={{ transform: `translate(${fabOpen ? -54 : 0}px, ${fabOpen ? -54 : 0}px)`, opacity: fabOpen ? 1 : 0, pointerEvents: fabOpen ? 'auto' : 'none', transition: 'transform 250ms ease, opacity 250ms ease' }}>
-              <button className="w-[60px] h-[60px] flex items-center justify-center p-1 rounded-full border border-green-500/20 bg-[#181818] shadow-lg hover:shadow-green-500/30 hover:scale-110 transition-all duration-300 group" onClick={() => spotifyService.initiateAuth()} title="Connect Spotify">
-                <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" className="w-7 h-7" fill="#1DB954"><path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z"/></svg>
-              </button>
-            </div>
-
-            {/* Automate at (0, -76) top */}
+            {/* Quarter-arc placement relative to + button */}
+            {/* Automate at radius1 top (0,-76) */}
             <div className="absolute bottom-0 right-0" style={{ transform: `translate(0px, ${fabOpen ? -76 : 0}px)`, opacity: fabOpen ? 1 : 0, pointerEvents: fabOpen ? 'auto' : 'none', transition: 'transform 250ms ease, opacity 250ms ease' }}>
               <div className="w-[60px] h-[60px] flex items-center justify-center p-1 rounded-full border border-gray-500/20 bg-[#181818] shadow-lg hover:shadow-gray-500/30 hover:scale-110 transition-all duration-300 group">
                 <AutomatePowerSwitch checked={isAutomateEnabled} onChange={handleAutomateToggle} />
               </div>
             </div>
 
-            {/* Feedback at (-38, -38) */}
-            <div className="absolute bottom-0 right-0" style={{ transform: `translate(${fabOpen ? -38 : 0}px, ${fabOpen ? -38 : 0}px)`, opacity: fabOpen ? 1 : 0, pointerEvents: fabOpen ? 'auto' : 'none', transition: 'transform 250ms ease, opacity 250ms ease' }}>
-              <button onClick={() => setFeedbackOpen(true)} title="Feedback" className="w-[60px] h-[60px] flex items-center justify-center p-1 rounded-full border border-yellow-500/20 bg-[#181818] shadow-lg hover:shadow-yellow-500/30 hover:scale-110 transition-all duration-300 group">
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" className="w-8 h-8" fill="#facc15"><path d="M20 2H4a2 2 0 0 0-2 2v14l4-4h14a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2z"/><path d="M12 6l1.176 2.381L16 8.764l-2 1.953.471 2.748L12 12.764l-2.471 1.701L10 10.717 8 8.764l2.824-.383L12 6z" fill="#0f172a"/></svg>
+            {/* Pricing removed for right FAB */}
+
+            {/* Spotify moved to diagonal (-72,-72) after swap; feedback removed */}
+            <div className="absolute bottom-0 right-0" style={{ transform: `translate(${fabOpen ? -70 : 0}px, ${fabOpen ? -67 : 0}px)`, opacity: fabOpen ? 1 : 0, pointerEvents: fabOpen ? 'auto' : 'none', transition: 'transform 250ms ease, opacity 250ms ease' }}>
+              <button className="w-[60px] h-[60px] flex items-center justify-center p-1 rounded-full border border-green-500/20 bg-[#181818] shadow-lg hover:shadow-green-500/30 hover:scale-110 transition-all duration-300 group" onClick={() => spotifyService.initiateAuth()} title="Connect Spotify">
+                <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" className="w-7 h-7" fill="#1DB954"><path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z"/></svg>
               </button>
             </div>
 
-            {/* Pricing at (-38, -76) */}
-            <div className="absolute bottom-0 right-0" style={{ transform: `translate(${fabOpen ? -38 : 0}px, ${fabOpen ? -76 : 0}px)`, opacity: fabOpen ? 1 : 0, pointerEvents: fabOpen ? 'auto' : 'none', transition: 'transform 250ms ease, opacity 250ms ease' }}>
-              <button 
-                onClick={() => navigate('/pricing')} 
-                title="Pricing" 
-                className="w-[60px] h-[60px] flex items-center justify-center p-1 rounded-full border-none cursor-pointer transition-all duration-300 hover:scale-110 group overflow-hidden"
-                style={{
-                  background: 'linear-gradient(15deg, #880088, #aa2068, #cc3f47, #de6f3d, #f09f33, #de6f3d, #cc3f47, #aa2068, #880088) no-repeat',
-                  backgroundSize: '300%',
-                  backgroundPosition: 'left center',
-                  textShadow: '2px 2px 3px rgb(136 0 136 / 50%)'
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.backgroundSize = '320%';
-                  e.currentTarget.style.backgroundPosition = 'right center';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.backgroundSize = '300%';
-                  e.currentTarget.style.backgroundPosition = 'left center';
-                }}
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 36 24" className="w-6 h-6 fill-current text-[#f09f33] group-hover:text-white transition-colors duration-300">
-                  <path d="m18 0 8 12 10-8-4 20H4L0 4l10 8 8-12z" />
-                </svg>
-              </button>
-            </div>
-
-            {/* Upload at (-76, -38) */}
-            <div className="absolute bottom-0 right-0" style={{ transform: `translate(${fabOpen ? -76 : 0}px, ${fabOpen ? -38 : 0}px)`, opacity: fabOpen ? 1 : 0, pointerEvents: fabOpen ? 'auto' : 'none', transition: 'transform 250ms ease, opacity 250ms ease' }}>
+            {/* Upload moved to radius1 left (-76,0); logout removed */}
+            <div className="absolute bottom-0 right-0" style={{ transform: `translate(${fabOpen ? -80 : 0}px, 0px)`, opacity: fabOpen ? 1 : 0, pointerEvents: fabOpen ? 'auto' : 'none', transition: 'transform 250ms ease, opacity 250ms ease' }}>
               <label className="w-[60px] h-[60px] flex items-center justify-center p-1 rounded-full border border-blue-500/20 bg-[#181818] shadow-lg hover:shadow-blue-500/30 hover:scale-110 transition-all duration-300 group cursor-pointer">
                 <input type="file" accept=".txt,.pdf" onChange={async (e) => { const files = e.target.files; if (!files || !user) return; const file = files[0]; if (!(await import('@/services/documentService')).documentService.isFileTypeSupported(file)) { toast({ title: 'Unsupported File Type', description: 'Please upload .txt or .pdf files only.', variant: 'destructive' }); return; } try { const { documentService } = await import('@/services/documentService'); const uploadedDoc = await documentService.uploadDocument(file, user.id); setLastUploadedDocument(uploadedDoc); toast({ title: 'Upload Successful', description: 'Should I summarize the file or if you wish anything else let me know.' }); await handleDocumentUpload('Upload successful! Should I summarize the file or if you wish anything else let me know.', uploadedDoc); } catch (error) { toast({ title: 'Upload Failed', description: error instanceof Error ? error.message : 'Failed to upload document.', variant: 'destructive' }); } finally { e.target.value = ''; } }} className="hidden" />
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640" className="w-8 h-8" fill="#3b82f6"><path d="M128 64C92.7 64 64 92.7 64 128L64 512C64 547.3 92.7 576 128 576L208 576L208 464C208 428.7 236.7 400 272 400L448 400L448 234.5C448 217.5 441.3 201.2 429.3 189.2L322.7 82.7C310.7 70.7 294.5 64 277.5 64L128 64zM389.5 240L296 240C282.7 240 272 229.3 272 216L272 122.5L389.5 240zM272 444C261 444 252 453 252 464L252 592C252 603 261 612 272 612C283 612 292 603 292 592L292 564L304 564C337.1 564 364 537.1 364 504C364 470.9 337.1 444 304 444L272 444zM304 524L292 524L292 484L304 484C315 484 324 493 324 504C324 515 315 524 304 524zM400 444C389 444 380 453 380 464L380 592C380 603 389 612 400 612L432 612C460.7 612 484 588.7 484 560L484 496C484 467.3 460.7 444 432 444L400 444zM420 572L420 484L432 484C438.6 484 444 489.4 444 496L444 560C444 566.6 438.6 572 432 572L420 572zM508 464L508 592C508 603 517 612 528 612C539 612 548 603 548 592L548 548L576 548C587 548 596 539 596 528C596 517 587 508 576 508L548 508L548 484L576 484C587 484 596 475 596 464C596 453 587 444 576 444L528 444C517 444 508 453 508 464z"/></svg>
               </label>
             </div>
 
-            {/* Logout at (-76, 0) */}
-            <div className="absolute bottom-0 right-0" style={{ transform: `translate(${fabOpen ? -76 : 0}px, 0px)`, opacity: fabOpen ? 1 : 0, pointerEvents: fabOpen ? 'auto' : 'none', transition: 'transform 250ms ease, opacity 250ms ease' }}>
-              <button onClick={handleSignOut} title="Logout" className="w-[60px] h-[60px] flex items-center justify-center p-1 rounded-full border border-red-500/20 bg-[#181818] shadow-lg hover:shadow-red-500/30 hover:scale-110 transition-all duration-300 group">
-                <svg className="w-7 h-7 text-red-500 group-hover:text-red-400 transition-colors duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
-              </button>
-            </div>
-
+            {/* Former far-left upload removed */}
             {/* Main FAB (+) Button */}
             <button
               className={`relative w-[60px] h-[60px] rounded-full bg-[#2e2e2e] shadow-lg flex items-center justify-center transition-all duration-200 ${fabOpen ? 'scale-90' : 'scale-100'}`}
@@ -536,6 +499,44 @@ const Index = () => {
           </div>
         </div>
       )}
+      {/* Lower-left FAB with Feedback, Pricing, Logout */}
+      <div style={{ position: 'fixed', left: 32, bottom: 32, zIndex: 100 }}>
+        <div className="relative flex flex-col items-start">
+          {/* Feedback top (0,-120) */}
+          <div className="absolute bottom-0 left-0" style={{ transform: `translate(0px, ${fabLeftOpen ? -76 : 0}px)`, opacity: fabLeftOpen ? 1 : 0, pointerEvents: fabLeftOpen ? 'auto' : 'none', transition: 'transform 250ms ease, opacity 250ms ease' }}>
+            <button onClick={() => setFeedbackOpen(true)} title="Feedback" className="w-[60px] h-[60px] flex items-center justify-center p-1 rounded-full border border-yellow-500/20 bg-[#181818] shadow-lg hover:shadow-yellow-500/30 hover:scale-110 transition-all duration-300 group">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" className="w-8 h-8" fill="#facc15"><path d="M20 2H4a2 2 0 0 0-2 2v14l4-4h14a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2z"/><path d="M12 6l1.176 2.381L16 8.764l-2 1.953.471 2.748L12 12.764l-2.471 1.701L10 10.717 8 8.764l2.824-.383L12 6z" fill="#0f172a"/></svg>
+            </button>
+          </div>
+          {/* Pricing diagonal (54,-54) */}
+          <div className="absolute bottom-0 left-0" style={{ transform: `translate(${fabLeftOpen ? 69 : 0}px, ${fabLeftOpen ? -69 : 0}px)`, opacity: fabLeftOpen ? 1 : 0, pointerEvents: fabLeftOpen ? 'auto' : 'none', transition: 'transform 250ms ease, opacity 250ms ease' }}>
+            <button onClick={() => navigate('/pricing')} title="Pricing" className="w-[60px] h-[60px] flex items-center justify-center p-1 rounded-full border border-blue-500/20 bg-[#181818] shadow-lg hover:shadow-blue-500/30 hover:scale-110 transition-all duration-300 group">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" className="w-8 h-8" fill="#3b82f6"><path d="M21.41 11.58l-9-9A2 2 0 0 0 11 2H4a2 2 0 0 0-2 2v7a2 2 0 0 0 .59 1.41l9 9a2 2 0 0 0 2.82 0l7-7a2 2 0 0 0 0-2.83zM7.5 8A1.5 1.5 0 1 1 9 6.5 1.5 1.5 0 0 1 7.5 8z"/></svg>
+            </button>
+          </div>
+          {/* Logout right (120,0) */}
+          <div className="absolute bottom-0 left-0" style={{ transform: `translate(${fabLeftOpen ? 80 : 0}px, 0px)`, opacity: fabLeftOpen ? 1 : 0, pointerEvents: fabLeftOpen ? 'auto' : 'none', transition: 'transform 250ms ease, opacity 250ms ease' }}>
+            <button onClick={handleSignOut} title="Logout" className="w-[60px] h-[60px] flex items-center justify-center p-1 rounded-full border border-red-500/20 bg-[#181818] shadow-lg hover:shadow-red-500/30 hover:scale-110 transition-all duration-300 group">
+              <svg className="w-7 h-7 text-red-500 group-hover:text-red-400 transition-colors duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
+            </button>
+          </div>
+          {/* Left FAB (+) */}
+          <button
+            className={`relative w-[60px] h-[60px] rounded-full bg-[#2e2e2e] shadow-lg flex items-center justify-center transition-all duration-200 ${fabLeftOpen ? 'scale-90' : 'scale-100'}`}
+            style={{ boxShadow: '0 6px 10px 0 rgba(0,0,0,0.3)' }}
+            onClick={() => setFabLeftOpen(v => !v)}
+            aria-label="Open actions left"
+          >
+            <svg className={`transition-transform duration-500 w-[30px] h-[30px] ${fabLeftOpen ? 'rotate-45' : 'rotate-0'}`} viewBox="0 0 48 48" width="48" height="48">
+              <circle cx="24" cy="24" r="24" fill="none" />
+              <g>
+                <rect x="22" y="12" width="4" height="24" rx="2" fill="#fff" />
+                <rect x="12" y="22" width="24" height="4" rx="2" fill="#fff" />
+              </g>
+            </svg>
+          </button>
+        </div>
+      </div>
     </div>
   );
 };
