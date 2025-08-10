@@ -19,11 +19,15 @@ export const useSpeechRecognition = (): SpeechRecognitionHook => {
   const retryCountRef = useRef(0);
   const maxRetries = 3;
   const { toast } = useToast();
+  // Tracks whether the user intends for recognition to be running
+  const wantsRecognitionRef = useRef(false);
+  // Prevents rapid duplicate start() calls that can trigger 'aborted'
+  const isStartingRef = useRef(false);
+  // Marks that stop was requested by us (not an error)
+  const stoppedManuallyRef = useRef(false);
+  // Stores last error type
+  const lastErrorRef = useRef<string | null>(null);
 
-  const isElectron = useCallback(() => {
-    return !!(window as any).require || !!(window as any).electron || 
-           navigator.userAgent.toLowerCase().includes('electron');
-  }, []);
 
   const requestMicrophonePermission = useCallback(async () => {
     try {
@@ -36,28 +40,20 @@ export const useSpeechRecognition = (): SpeechRecognitionHook => {
     }
   }, []);
 
-  const checkSpeechSupport = useCallback(() => {
+  const webSpeechAvailable = useCallback(() => {
     const hasWebkit = 'webkitSpeechRecognition' in window;
     const hasNative = 'SpeechRecognition' in window;
-    
-    if (!hasWebkit && !hasNative) {
-      console.warn('Speech recognition not available');
-      return false;
-    }
-    
-    try {
-      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-      const test = new SpeechRecognition();
-      test.lang = 'en-US';
-      return true;
-    } catch (error) {
-      console.error('Speech recognition test failed:', error);
-      return false;
-    }
+    return hasWebkit || hasNative;
   }, []);
 
+  const checkSpeechSupport = useCallback(() => {
+    // Only support when Web Speech API is available
+    return webSpeechAvailable();
+  }, [webSpeechAvailable]);
+
   const initializeSpeechRecognition = useCallback(() => {
-    if (!checkSpeechSupport()) {
+    // Only initialize Web Speech when actually available
+    if (!webSpeechAvailable()) {
       setIsSupported(false);
       return;
     }
@@ -74,6 +70,7 @@ export const useSpeechRecognition = (): SpeechRecognitionHook => {
 
       recognitionRef.current.addEventListener('start', () => {
         console.log('Speech recognition started');
+        isStartingRef.current = false;
         setIsRecording(true);
         retryCountRef.current = 0;
       });
@@ -100,6 +97,9 @@ export const useSpeechRecognition = (): SpeechRecognitionHook => {
       });
 
       recognitionRef.current.addEventListener('error', (event: any) => {
+        // Any error means we are no longer in a starting phase
+        isStartingRef.current = false;
+        lastErrorRef.current = event?.error ?? null;
         console.error('Speech recognition error:', event.error, event);
         
         let errorMessage = 'Speech recognition error occurred.';
@@ -107,13 +107,8 @@ export const useSpeechRecognition = (): SpeechRecognitionHook => {
         
         switch (event.error) {
           case 'network':
-            if (isElectron()) {
-              errorMessage = 'Network error in Electron. This may be due to internet connectivity or CORS restrictions.';
-              shouldRetry = retryCountRef.current < maxRetries;
-            } else {
-              errorMessage = 'Network error. Please check your internet connection.';
-              shouldRetry = true;
-            }
+            errorMessage = 'Network error. Please check your internet connection.';
+            shouldRetry = true;
             break;
           case 'not-allowed':
             errorMessage = 'Microphone access denied. Please allow microphone permissions in your browser settings.';
@@ -123,16 +118,34 @@ export const useSpeechRecognition = (): SpeechRecognitionHook => {
             shouldRetry = true;
             break;
           case 'aborted':
-            errorMessage = 'Speech recognition was stopped.';
-            break;
+            // Benign in Chrome: often fired when start() is called while already starting/running
+            // or when stop() is invoked during startup. Treat as informational.
+            // Do not toast; optionally auto-restart if the user still wants it.
+            isStartingRef.current = false;
+            if (wantsRecognitionRef.current) {
+              setTimeout(() => {
+                if (recognitionRef.current && wantsRecognitionRef.current && !isStartingRef.current) {
+                  try {
+                    isStartingRef.current = true;
+                    console.log('Restarting after aborted');
+                    recognitionRef.current.start();
+                  } catch (error) {
+                    console.error('Restart after aborted failed:', error);
+                  } finally {
+                    // isStarting will be reset on 'start'
+                  }
+                }
+              }, 800);
+            } else {
+              setIsRecording(false);
+              setCurrentTranscript('');
+            }
+            return; // Exit early; don't show toast
           case 'audio-capture':
             errorMessage = 'Audio capture failed. Please check your microphone connection.';
             break;
           case 'service-not-allowed':
             errorMessage = 'Speech recognition service not allowed. This may be due to browser or system restrictions.';
-            if (isElectron()) {
-              errorMessage += ' Try running the web version instead.';
-            }
             break;
           default:
             errorMessage = `Speech recognition error: ${event.error}`;
@@ -162,18 +175,34 @@ export const useSpeechRecognition = (): SpeechRecognitionHook => {
           variant: "destructive"
         });
         
+        // If it's a hard error, stop trying unless user starts again
+        wantsRecognitionRef.current = false;
         setIsRecording(false);
         setCurrentTranscript('');
       });
 
       recognitionRef.current.addEventListener('end', () => {
         console.log('Speech recognition ended');
+        isStartingRef.current = false;
         
-        // Auto-restart if we're supposed to be recording (unless it was an error)
-        if (isRecording && retryCountRef.current < maxRetries) {
+        // If we stopped manually, just reset state.
+        if (stoppedManuallyRef.current || !wantsRecognitionRef.current) {
+          stoppedManuallyRef.current = false;
+          setIsRecording(false);
+          setCurrentTranscript('');
+          // Force a fresh instance next time to avoid Chrome edge-cases
+          try {
+            recognitionRef.current = null;
+          } catch {}
+          return;
+        }
+
+        // Auto-restart if the user still wants recognition
+        if (wantsRecognitionRef.current && retryCountRef.current < maxRetries) {
           setTimeout(() => {
-            if (recognitionRef.current && isRecording) {
+            if (recognitionRef.current && wantsRecognitionRef.current && !isStartingRef.current) {
               try {
+                isStartingRef.current = true;
                 console.log('Auto-restarting speech recognition');
                 recognitionRef.current.start();
               } catch (error) {
@@ -181,31 +210,24 @@ export const useSpeechRecognition = (): SpeechRecognitionHook => {
                 setIsRecording(false);
               }
             }
-          }, 500);
+          }, 800);
         } else {
           setIsRecording(false);
           setCurrentTranscript('');
         }
       });
     }
-  }, [toast, isElectron, checkSpeechSupport, isRecording]);
+  }, [toast, webSpeechAvailable]);
+
+  // Removed custom fallback STT; Web Speech API only
 
   useEffect(() => {
     const supported = checkSpeechSupport();
     setIsSupported(supported);
 
-    if (!supported) {
-      toast({
-        title: "Speech Recognition Unavailable",
-        description: isElectron() 
-          ? "Speech recognition may not work properly in Electron due to security restrictions. Consider using the web version."
-          : "Speech recognition is not supported in this browser. Please use Chrome or Edge.",
-        variant: "destructive"
-      });
-      return;
+    if (webSpeechAvailable()) {
+      initializeSpeechRecognition();
     }
-
-    initializeSpeechRecognition();
 
     return () => {
       if (recognitionRef.current) {
@@ -216,20 +238,9 @@ export const useSpeechRecognition = (): SpeechRecognitionHook => {
         }
       }
     };
-  }, [toast, isElectron, initializeSpeechRecognition]);
+  }, [toast, initializeSpeechRecognition]);
 
   const startRecording = useCallback(async () => {
-    if (!recognitionRef.current || !isSupported) {
-      toast({
-        title: "Cannot Start Recording",
-        description: isElectron() 
-          ? "Speech recognition is not available in this Electron environment. Try the web version."
-          : "Speech recognition is not supported.",
-        variant: "destructive"
-      });
-      return;
-    }
-
     // Request microphone permission first
     const hasPermission = await requestMicrophonePermission();
     if (!hasPermission) {
@@ -240,28 +251,38 @@ export const useSpeechRecognition = (): SpeechRecognitionHook => {
       });
       return;
     }
+
+    // Use Web Speech API only
+    if (!webSpeechAvailable()) {
+      toast({ title: 'Speech Not Supported', description: 'This browser does not support Web Speech API.', variant: 'destructive' });
+      return;
+    }
+
+    if (!recognitionRef.current) {
+      initializeSpeechRecognition();
+    }
     
     try {
+      if (isStartingRef.current || isRecording) return;
+      wantsRecognitionRef.current = true;
+      isStartingRef.current = true;
       retryCountRef.current = 0;
-      recognitionRef.current.start();
-      toast({
-        title: "Recording Started",
-        description: "Speak naturally. I'm listening and will respond in real-time.",
-      });
+      // Small delay helps after immediate stop/end cycles in Chrome
+      await new Promise(resolve => setTimeout(resolve, 100));
+      recognitionRef.current?.start();
+      toast({ title: "Recording Started", description: "Speak naturally. I'm listening and will respond in real-time." });
     } catch (error) {
       console.error('Error starting recognition:', error);
-      toast({
-        title: "Error",
-        description: "Failed to start recording. Please try again.",
-        variant: "destructive"
-      });
+      setIsRecording(false);
     }
-  }, [isSupported, toast, isElectron, requestMicrophonePermission]);
+  }, [isSupported, toast, requestMicrophonePermission, webSpeechAvailable, isRecording, initializeSpeechRecognition]);
 
   const stopRecording = useCallback(() => {
     if (!recognitionRef.current) return;
-    
     try {
+      wantsRecognitionRef.current = false;
+      stoppedManuallyRef.current = true;
+      isStartingRef.current = false;
       recognitionRef.current.stop();
       setIsRecording(false);
       setCurrentTranscript('');
