@@ -1,18 +1,14 @@
 import { useState, useRef, useEffect } from 'react';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Switch } from '@/components/ui/switch';
-import { Mic, MicOff, Download, Trash2, Volume2, VolumeX, LogOut, Bot } from 'lucide-react';
+// UI imports removed for simplified layout
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 import { useSpeechRecognition } from '@/hooks/useSpeechRecognition';
+import { textToSpeechService } from '@/services/textToSpeechService';
 import { simplifiedActionRouter } from '@/services/simplifiedActionRouter';
 import { spotifyService } from '@/services/spotifyService';
 import { automateService } from '@/services/automateService';
 import { supabase } from '@/integrations/supabase/client';
-import DocumentUpload from '@/components/DocumentUpload';
-import spotifyIcon from '@/assets/spotify-icon.svg';
+// Removed DocumentUpload section per UI change
 import AutomatePowerSwitch from '../components/AutomatePowerSwitch';
 import AnimatedCallButton from '../components/AnimatedCallButton';
 
@@ -296,6 +292,19 @@ const Index = () => {
 
   const handleAutomateToggle = async (enabled: boolean) => {
     setIsAutomateEnabled(enabled);
+    // Speak status change
+    try {
+      setIsPlayingTTS(true);
+      const audio = await textToSpeechService.convertTextToSpeech(
+        enabled ? 'Automation enabled' : 'Automation disabled',
+        { voiceId: selectedVoice }
+      );
+      await textToSpeechService.playAudio(audio);
+    } catch (error) {
+      console.error('TTS speak error:', error);
+    } finally {
+      setIsPlayingTTS(false);
+    }
     
     if (enabled) {
       const connected = await automateService.checkConnection();
@@ -362,16 +371,12 @@ const Index = () => {
   if (!speechRecognition.isSupported) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 flex items-center justify-center p-4">
-        <Card className="w-full max-w-md">
-          <CardHeader>
-            <CardTitle className="text-center text-red-600">Speech Recognition Unavailable</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-center text-muted-foreground">
-              Speech recognition is not available in this environment. This may be due to browser limitations or Electron security restrictions. Please use a compatible browser or the web version for voice features.
-            </p>
-          </CardContent>
-        </Card>
+        <div className="w-full max-w-md rounded-lg shadow-lg bg-white/90 p-6">
+          <h2 className="text-center text-red-600 font-semibold mb-3">Speech Recognition Unavailable</h2>
+          <p className="text-center text-muted-foreground">
+            Speech recognition is not available in this environment. This may be due to browser limitations or Electron security restrictions. Please use a compatible browser or the web version for voice features.
+          </p>
+        </div>
       </div>
     );
   }
@@ -379,192 +384,15 @@ const Index = () => {
   return (
     <div className="min-h-screen" style={{ background: 'rgb(33,33,33)' }}>
       <div className="max-w-4xl mx-auto space-y-6">
-        {/* Settings Card */}
-        <Card className="border-0 shadow-lg bg-white/80 backdrop-blur-sm">
-          <CardHeader>
-            <CardTitle className="text-sm">Settings</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {/* Processing Status */}
-            {(isPlayingTTS || isProcessingLLM) && (
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Bot className="w-4 h-4 animate-pulse" />
-                {isProcessingLLM ? 'Thinking...' : 'Speaking...'}
-              </div>
-            )}
-
-            {/* Automation Status */}
-            {isAutomateEnabled && (
-              <div>
-                <label className="text-sm font-medium mb-2 block">Automation Status</label>
-                <div className="flex items-center gap-2">
-                  {isAutomateConnected ? (
-                    <div className="flex items-center gap-2">
-                      <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-                      <span className="text-sm text-blue-600">Connected</span>
-                      <Badge variant="secondary" className="bg-blue-100 text-blue-700">
-                        Ready for automation commands
-                      </Badge>
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-2">
-                      <div className="w-2 h-2 bg-red-500 rounded-full"></div>
-                      <span className="text-sm text-red-600">Service offline</span>
-                      <Badge variant="secondary" className="bg-red-100 text-red-700">
-                        Start MJAK automation service
-                      </Badge>
-                    </div>
-                  )}
-                </div>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Say commands like "open Google", "create a document", or "send email" to automate your computer
-                </p>
-              </div>
-            )}
-
-            {/* Spotify Status */}
-            {isSpotifyEnabled && (
-              <div>
-                <label className="text-sm font-medium mb-2 block">Spotify Status</label>
-                <div className="flex items-center gap-2">
-                  {isSpotifyConnected ? (
-                    <div className="flex items-center gap-2">
-                      <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                      <span className="text-sm text-green-600">Connected</span>
-                      <Badge variant="secondary" className="bg-green-100 text-green-700">
-                        Ready for music commands
-                      </Badge>
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-2">
-                      <div className="w-2 h-2 bg-gray-400 rounded-full"></div>
-                      <span className="text-sm text-muted-foreground">Not connected</span>
-                      <Button 
-                        size="sm" 
-                        variant="outline"
-                        onClick={() => spotifyService.initiateAuth()}
-                        className="border-green-200 hover:bg-green-50 text-green-600"
-                      >
-                        Connect Spotify
-                      </Button>
-                    </div>
-                  )}
-                </div>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Say "connect Spotify" or "play [song] by [artist]" to control music
-                </p>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
         {/* Animated Call Button Section */}
-        <div className="flex justify-center my-8">
+        <div className="fixed inset-0 flex items-center justify-center">
           <AnimatedCallButton
             label={speechRecognition.isRecording ? 'End Call' : 'Start Call'}
             onClick={speechRecognition.isRecording ? stopRecording : startRecording}
           />
         </div>
 
-        {/* Live Transcript & Response */}
-        {(speechRecognition.currentTranscript || currentResponse || speechRecognition.isRecording) && (
-          <Card className="border-0 shadow-lg bg-gradient-to-r from-blue-50 to-purple-50 border-blue-200">
-            <CardHeader>
-              <CardTitle className="text-sm font-medium text-blue-700 flex items-center gap-2">
-                <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
-                Live Conversation
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {speechRecognition.currentTranscript && (
-                <div className="text-lg text-gray-700 leading-relaxed">
-                  <span className="text-xs text-muted-foreground">You:</span>
-                  <p>{speechRecognition.currentTranscript}</p>
-                </div>
-              )}
-              {currentResponse && (
-                <div className="text-lg text-blue-800 leading-relaxed">
-                  <span className="text-xs text-blue-600">MJAK:</span>
-                  <p>{currentResponse}</p>
-                </div>
-              )}
-              {speechRecognition.isRecording && !speechRecognition.currentTranscript && !currentResponse && (
-                <p className="text-lg text-gray-700 min-h-[3rem] leading-relaxed">Listening...</p>
-              )}
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Conversation History */}
-        <Card className="border-0 shadow-lg bg-white/80 backdrop-blur-sm">
-          <CardHeader>
-            <CardTitle className="flex items-center justify-between">
-              <span>Conversation History</span>
-              {transcript.length > 0 && (
-                <div className="flex items-center gap-2">
-                  <Badge variant="secondary" className="bg-blue-100 text-blue-700">
-                    {transcript.length} messages
-                  </Badge>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={clearTranscript}
-                    className="h-6 px-2 text-xs"
-                  >
-                    <Trash2 className="w-3 h-3" />
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={downloadTranscript}
-                    className="h-6 px-2 text-xs"
-                  >
-                    <Download className="w-3 h-3" />
-                  </Button>
-                </div>
-              )}
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {transcript.length === 0 ? (
-              <div className="text-center py-12">
-                <Mic className="w-12 h-12 mx-auto text-muted-foreground mb-4 opacity-50" />
-                <p className="text-muted-foreground text-lg">No conversations yet</p>
-                <p className="text-sm text-muted-foreground mt-2">
-                  Click "Start Call" to begin a natural conversation with MJAK
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-4 max-h-96 overflow-y-auto">
-                {transcript.map((entry, index) => (
-                  <div
-                    key={entry.id}
-                    className={`p-4 rounded-lg border transition-shadow duration-200 ${
-                      entry.type === 'user' 
-                        ? 'bg-gradient-to-r from-gray-50 to-blue-50 border-gray-200' 
-                        : 'bg-gradient-to-r from-purple-50 to-pink-50 border-purple-200'
-                    }`}
-                  >
-                    <div className="flex items-start justify-between mb-2">
-                      <div className="flex items-center gap-2">
-                        <Badge variant="outline" className="text-xs">
-                          {entry.type === 'user' ? 'You' : 'MJAK'}
-                        </Badge>
-                      </div>
-                      <div className="text-xs text-muted-foreground">
-                        {formatTimestamp(entry.timestamp)}
-                      </div>
-                    </div>
-                    <p className="text-gray-800 leading-relaxed">{entry.text}</p>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Document Upload */}
-        <DocumentUpload onDocumentProcessed={handleDocumentUpload} />
+        {/* Document Upload section removed; upload now handled by FAB PDF button */}
 
         {/* Floating Action Button (FAB) and Menu */}
         <div style={{ position: 'fixed', right: 32, bottom: 32, zIndex: 100 }}>
@@ -590,7 +418,7 @@ const Index = () => {
               <label className="w-[60px] h-[60px] flex items-center justify-center p-1 rounded-full border border-blue-500/20 bg-[#181818] shadow-lg hover:shadow-blue-500/30 hover:scale-110 transition-all duration-300 group cursor-pointer">
                 <input
                   type="file"
-                  accept=".pdf"
+                  accept=".txt,.pdf"
                   onChange={async (e) => {
                     const files = e.target.files;
                     if (!files || !user) return;
@@ -598,7 +426,7 @@ const Index = () => {
                     if (!(await import('@/services/documentService')).documentService.isFileTypeSupported(file)) {
                       toast({
                         title: "Unsupported File Type",
-                        description: "Please upload .pdf files only.",
+                        description: "Please upload .txt or .pdf files only.",
                         variant: "destructive"
                       });
                       return;
@@ -658,10 +486,6 @@ const Index = () => {
           </div>
         </div>
 
-        {/* Footer */}
-        <div className="text-center text-sm text-muted-foreground">
-          <p>Built with Web Speech API & ElevenLabs • Works best in Chrome and Edge browsers</p>
-        </div>
       </div>
     </div>
   );
