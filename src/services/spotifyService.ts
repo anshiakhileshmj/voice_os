@@ -21,7 +21,7 @@ export interface SpotifyTrack {
 
 export class SpotifyService {
   private static readonly SPOTIFY_AUTH_URL = 'https://accounts.spotify.com/authorize';
-  private static readonly REDIRECT_URI = 'https://s2s.lovable.app';
+  private static readonly REDIRECT_URI = 'https://voice-os.vercel.app';
   private static readonly SCOPES = [
     'user-read-private',
     'user-read-email',

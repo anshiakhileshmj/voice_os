@@ -1,3 +1,4 @@
+
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 
 const corsHeaders = {
@@ -11,11 +12,12 @@ serve(async (req) => {
   }
 
   try {
-    const SPOTIFY_CLIENT_ID = Deno.env.get('SPOTIFY_CLIENT_ID')
+    // Use your actual Spotify client ID
+    const SPOTIFY_CLIENT_ID = '2a6fa47fd715402b9bd176a9a958175d'
     const SPOTIFY_CLIENT_SECRET = Deno.env.get('SPOTIFY_CLIENT_SECRET')
     
-    if (!SPOTIFY_CLIENT_ID || !SPOTIFY_CLIENT_SECRET) {
-      throw new Error('Spotify credentials not configured')
+    if (!SPOTIFY_CLIENT_SECRET) {
+      throw new Error('Spotify client secret not configured')
     }
 
     const url = new URL(req.url)
