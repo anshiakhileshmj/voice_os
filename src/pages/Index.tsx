@@ -1,241 +1,562 @@
-import React, { useState, useEffect } from 'react';
-import { AnimatedCallButton } from '@/components/AnimatedCallButton';
-import { FloatingActionButtons } from '@/components/FloatingActionButtons';
+import { useState, useRef, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+// UI imports removed for simplified layout
+import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/hooks/useAuth';
+import { useSpeechRecognition } from '@/hooks/useSpeechRecognition';
+import { textToSpeechService } from '@/services/textToSpeechService';
 import { simplifiedActionRouter } from '@/services/simplifiedActionRouter';
 import { spotifyService } from '@/services/spotifyService';
-import { useAuth } from '@/hooks/useAuth';
-import { Button } from '@/components/ui/button';
-import { useToast } from '@/hooks/use-toast';
+import { automateService } from '@/services/automateService';
+import { supabase } from '@/integrations/supabase/client';
+// Removed DocumentUpload section per UI change
+import AutomatePowerSwitch from '../components/AutomatePowerSwitch';
+import AnimatedCallButton from '../components/AnimatedCallButton';
+
+interface TranscriptEntry {
+  id: string;
+  text: string;
+  timestamp: Date;
+  type: 'user' | 'assistant';
+}
 
 const Index = () => {
-  const [isListening, setIsListening] = useState(false);
-  const [isConversationActive, setIsConversationActive] = useState(false);
-  const [conversation, setConversation] = useState<Array<{role: 'user' | 'assistant', content: string}>>([]);
+  const { user, loading, signOut } = useAuth();
+  const [transcript, setTranscript] = useState<TranscriptEntry[]>([]);
   const [currentResponse, setCurrentResponse] = useState('');
-  const [isSpotifyEnabled, setIsSpotifyEnabled] = useState(false);
+  const [isProcessingLLM, setIsProcessingLLM] = useState(false);
+  const [isPlayingTTS, setIsPlayingTTS] = useState(false);
   const [isSpotifyConnected, setIsSpotifyConnected] = useState(false);
+  const [isSpotifyEnabled, setIsSpotifyEnabled] = useState(false);
   const [isAutomateEnabled, setIsAutomateEnabled] = useState(false);
-  const [isAutomateConnected, setIsAutomateConnected] = useState(true);
-  const { user } = useAuth();
+  const [isAutomateConnected, setIsAutomateConnected] = useState(false);
+  const [userName, setUserName] = useState('');
+  const [lastUploadedDocument, setLastUploadedDocument] = useState<any>(null);
+  const [fabOpen, setFabOpen] = useState(false);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const [feedbackRating, setFeedbackRating] = useState<number>(0);
+  const [feedbackText, setFeedbackText] = useState('');
+  const [fabLeftOpen, setFabLeftOpen] = useState(false);
   const { toast } = useToast();
+  const navigate = useNavigate();
 
-  // Check for Spotify callback on component mount
+  // Fixed voice to English US Male
+  const selectedVoice = 'english_us_male';
+
+  // Use the new speech recognition hook
+  const speechRecognition = useSpeechRecognition();
+
   useEffect(() => {
-    const handleSpotifyCallback = async () => {
-      const urlParams = new URLSearchParams(window.location.search);
-      const code = urlParams.get('code');
-      const state = urlParams.get('state');
+    // Set up speech recognition result handler
+    speechRecognition.onResult((finalTranscript: string) => {
+      const newEntry: TranscriptEntry = {
+        id: Date.now().toString(),
+        text: finalTranscript,
+        timestamp: new Date(),
+        type: 'user'
+      };
       
-      if (code && state) {
-        try {
-          const success = await spotifyService.handleCallback(code, state);
-          if (success) {
-            setIsSpotifyConnected(true);
-            setIsSpotifyEnabled(true);
-            toast({
-              title: "Spotify Connected",
-              description: "Your Spotify account has been successfully connected!",
-            });
-          } else {
-            toast({
-              title: "Connection Failed",
-              description: "Failed to connect to Spotify. Please try again.",
-              variant: "destructive"
-            });
-          }
-        } catch (error) {
-          console.error('Spotify callback error:', error);
+      setTranscript(prev => [...prev, newEntry]);
+      
+      // Process through streamlined conversation system
+      handleStreamingConversation(finalTranscript);
+    });
+  }, [speechRecognition]);
+
+  useEffect(() => {
+    if (!loading && !user) {
+      window.location.href = '/';
+    } else if (user) {
+      const getUserProfile = async () => {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('name')
+          .eq('id', user.id)
+          .single();
+        
+        if (profile?.name) {
+          setUserName(profile.name);
+        } else {
+          setUserName(user.email?.split('@')[0] || 'there');
+        }
+      };
+      getUserProfile();
+    }
+  }, [user, loading]);
+
+  useEffect(() => {
+    const checkAutomateConnection = async () => {
+      if (isAutomateEnabled) {
+        const connected = await automateService.checkConnection();
+        setIsAutomateConnected(connected);
+        if (!connected) {
           toast({
-            title: "Connection Error",
-            description: "An error occurred while connecting to Spotify.",
+            title: "Automation Service Offline",
+            description: "Please start the MJAK automation service to enable automation features.",
             variant: "destructive"
           });
         }
-        
-        // Clean up URL
-        window.history.replaceState({}, document.title, window.location.pathname);
       }
     };
 
-    handleSpotifyCallback();
-  }, [toast]);
+    checkAutomateConnection();
+    const interval = isAutomateEnabled ? setInterval(checkAutomateConnection, 30000) : null;
 
-  // Check Spotify connection status
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [isAutomateEnabled, toast]);
+
   useEffect(() => {
     const checkSpotifyConnection = async () => {
-      try {
-        const connected = await spotifyService.isConnected();
-        setIsSpotifyConnected(connected);
-      } catch (error) {
-        console.error('Error checking Spotify connection:', error);
+      if (user) {
+        const urlParams = new URLSearchParams(window.location.search);
+        const code = urlParams.get('code');
+        const state = urlParams.get('state');
+        
+        if (code && state) {
+          try {
+            const success = await spotifyService.handleCallback(code, state);
+            if (success) {
+              setIsSpotifyConnected(true);
+              toast({
+                title: "Spotify Connected!",
+                description: "You can now control music with voice commands.",
+              });
+              window.history.replaceState({}, document.title, window.location.pathname);
+            } else {
+              toast({
+                title: "Connection Failed",
+                description: "Failed to connect to Spotify. Please try again.",
+                variant: "destructive"
+              });
+            }
+          } catch (error) {
+            console.error('Spotify callback error:', error);
+            toast({
+              title: "Connection Error",
+              description: "An error occurred while connecting to Spotify.",
+              variant: "destructive"
+            });
+          }
+        } else {
+          const connected = await spotifyService.isConnected();
+          setIsSpotifyConnected(connected);
+        }
       }
     };
-
     checkSpotifyConnection();
-  }, []);
+  }, [user, toast]);
 
-  const handleStartConversation = () => {
-    setIsListening(true);
-    setIsConversationActive(true);
+  const handleStreamingConversation = async (userInput: string) => {
+    if (!userInput.trim()) return;
+
+    setIsProcessingLLM(true);
     setCurrentResponse('');
+    
+    // Set automation state
+    simplifiedActionRouter.setAutomateEnabled(isAutomateEnabled);
 
-    window.electronAPI.startListening()
-      .then((text: string) => {
-        if (text) {
-          const newMessage = { role: 'user' as const, content: text };
-          setConversation(prev => [...prev, newMessage]);
-
-          simplifiedActionRouter.processConversation(text, {
-            onLLMChunk: (chunk: string) => {
-              setCurrentResponse(prev => prev + chunk);
-            },
-            onLLMComplete: (response: string) => {
-              const assistantMessage = { role: 'assistant' as const, content: response };
-              setConversation(prev => [...prev, assistantMessage]);
-              setIsConversationActive(false);
-              setIsListening(false);
-            },
-            onTTSStart: () => {
-              console.log('TTS started');
-            },
-            onTTSComplete: () => {
-              console.log('TTS completed');
-            },
-            onError: (error: Error) => {
-              console.error('Error during conversation:', error);
-              toast({
-                title: "An error occurred",
-                description: error.message,
-                variant: "destructive",
-              });
-              setIsListening(false);
-              setIsConversationActive(false);
-            }
+    try {
+      await simplifiedActionRouter.processConversation(userInput, {
+        onLLMChunk: (chunk: string) => {
+          setCurrentResponse(prev => prev + chunk);
+        },
+        onLLMComplete: (response: string) => {
+          setIsProcessingLLM(false);
+          
+          // Add assistant response to transcript
+          const assistantEntry: TranscriptEntry = {
+            id: (Date.now() + 1).toString(),
+            text: response,
+            timestamp: new Date(),
+            type: 'assistant'
+          };
+          setTranscript(prev => [...prev, assistantEntry]);
+          setCurrentResponse('');
+        },
+        onTTSStart: () => {
+          setIsPlayingTTS(true);
+        },
+        onTTSComplete: () => {
+          setIsPlayingTTS(false);
+        },
+        onError: (error: Error) => {
+          console.error('Conversation error:', error);
+          setIsProcessingLLM(false);
+          setIsPlayingTTS(false);
+          toast({
+            title: "Conversation Error",
+            description: error.message,
+            variant: "destructive"
           });
-        } else {
-          setIsListening(false);
-          setIsConversationActive(false);
         }
-      })
-      .catch((error: Error) => {
-        console.error('Error starting conversation:', error);
-        toast({
-          title: "Voice Recognition Error",
-          description: "Failed to start voice recognition. Please check your microphone and permissions.",
-          variant: "destructive",
-        });
-        setIsListening(false);
-        setIsConversationActive(false);
       });
+
+    } catch (error) {
+      console.error('Streaming conversation error:', error);
+      setIsProcessingLLM(false);
+      setIsPlayingTTS(false);
+      toast({
+        title: "AI Error",
+        description: error instanceof Error ? error.message : "Failed to process your request.",
+        variant: "destructive"
+      });
+    }
   };
 
-  const handleStopConversation = () => {
+  const startRecording = () => {
+    speechRecognition.startRecording();
+  };
+
+  const stopRecording = () => {
+    speechRecognition.stopRecording();
     simplifiedActionRouter.stopCurrentConversation();
-    setIsListening(false);
-    setIsConversationActive(false);
-    setCurrentResponse('');
+    setIsProcessingLLM(false);
+    setIsPlayingTTS(false);
+    toast({
+      title: "Recording Stopped",
+      description: "Conversation ended.",
+    });
   };
 
-  const handleClearHistory = () => {
+  const clearTranscript = () => {
+    setTranscript([]);
+    setCurrentResponse('');
     simplifiedActionRouter.clearConversationHistory();
-    setConversation([]);
-    setCurrentResponse('');
+    toast({
+      title: "Conversation Cleared",
+      description: "All conversation data has been removed.",
+    });
   };
 
-  const handleSpotifyToggle = (enabled: boolean) => {
+  const downloadTranscript = () => {
+    if (transcript.length === 0) {
+      toast({
+        title: "No Content",
+        description: "No conversation available to download.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    const content = transcript
+      .map(entry => `[${entry.timestamp.toLocaleTimeString()}] ${entry.type === 'user' ? 'You' : 'MJAK'}: ${entry.text}`)
+      .join('\n\n');
+    
+    const blob = new Blob([content], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `conversation-${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    toast({
+      title: "Download Complete",
+      description: "Conversation has been downloaded successfully.",
+    });
+  };
+
+  const formatTimestamp = (date: Date) => {
+    return date.toLocaleTimeString('en-US', { 
+      hour12: false,
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit'
+    });
+  };
+
+  const handleSpotifyToggle = async (enabled: boolean) => {
     setIsSpotifyEnabled(enabled);
-    simplifiedActionRouter.setAutomateEnabled(enabled);
+    
+    if (enabled && !isSpotifyConnected) {
+      try {
+        await spotifyService.initiateAuth();
+        toast({
+          title: "Connecting to Spotify",
+          description: "Redirecting you to Spotify to connect your account...",
+        });
+      } catch (error) {
+        console.error('Spotify connection error:', error);
+        setIsSpotifyEnabled(false);
+        toast({
+          title: "Connection Failed",
+          description: "Failed to connect to Spotify. Please try again.",
+          variant: "destructive"
+        });
+      }
+    } else if (!enabled) {
+      toast({
+        title: "Spotify Disabled",
+        description: "Spotify integration has been disabled.",
+      });
+    }
   };
 
-  const handleAutomateToggle = (enabled: boolean) => {
+  const handleAutomateToggle = async (enabled: boolean) => {
     setIsAutomateEnabled(enabled);
-    simplifiedActionRouter.setAutomateEnabled(enabled);
+    // Speak status change
+    try {
+      setIsPlayingTTS(true);
+      const audio = await textToSpeechService.convertTextToSpeech(
+        enabled ? 'Automation enabled' : 'Automation disabled',
+        { voiceId: selectedVoice }
+      );
+      await textToSpeechService.playAudio(audio);
+    } catch (error) {
+      console.error('TTS speak error:', error);
+    } finally {
+      setIsPlayingTTS(false);
+    }
+    
+    if (enabled) {
+      const connected = await automateService.checkConnection();
+      setIsAutomateConnected(connected);
+      
+      if (connected) {
+        toast({
+          title: "Automation Enabled",
+          description: "You can now automate your computer with voice commands like 'open Google' or 'take a screenshot'.",
+        });
+      } else {
+        toast({
+          title: "Automation Service Required",
+          description: "Please start the MJAK automation service to enable automation features.",
+          variant: "destructive"
+        });
+      }
+    } else {
+      setIsAutomateConnected(false);
+      toast({
+        title: "Automation Disabled",
+        description: "Computer automation has been disabled.",
+      });
+    }
   };
 
-  const handleDocumentUpload = (response: string, document?: any) => {
-    const newMessage = { role: 'assistant' as const, content: response };
-    setConversation(prev => [...prev, newMessage]);
+  const handleDocumentUpload = async (response: string, document?: any) => {
+    if (document) {
+      setLastUploadedDocument(document);
+    }
+    
+    const promptMessage = "PDF uploaded successfully! What would you like me to do with this PDF?";
+    
+    // Handle through streaming conversation system
+    await handleStreamingConversation(promptMessage);
+    
+    if (!speechRecognition.isRecording) {
+      setTimeout(() => {
+        startRecording();
+      }, 2000);
+    }
   };
+
+  const handleSignOut = async () => {
+    await signOut();
+    window.location.href = '/';
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-muted-foreground">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return null;
+  }
+
+  if (!speechRecognition.isSupported) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 flex items-center justify-center p-4">
+        <div className="w-full max-w-md rounded-lg shadow-lg bg-white/90 p-6">
+          <h2 className="text-center text-red-600 font-semibold mb-3">Speech Recognition Unavailable</h2>
+            <p className="text-center text-muted-foreground">
+              Speech recognition is not available in this environment. This may be due to browser limitations or Electron security restrictions. Please use a compatible browser or the web version for voice features.
+            </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-purple-900 to-violet-800 flex flex-col items-center justify-center p-4 relative overflow-hidden">
-      <div className="absolute inset-0 bg-[url('/placeholder.svg')] opacity-5"></div>
-      
-      <div className="relative z-10 flex flex-col items-center justify-center space-y-8 max-w-4xl mx-auto text-center">
-        <div className="space-y-4">
-          <h1 className="text-6xl md:text-8xl font-bold text-white mb-4 tracking-tight">
-            Voice<span className="text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-400">OS</span>
-          </h1>
-          <p className="text-xl md:text-2xl text-gray-300 mb-8 max-w-2xl mx-auto leading-relaxed">
-            Your AI-powered voice assistant that understands, learns, and adapts to your needs
-          </p>
-        </div>
-
-        <div className="flex flex-col items-center space-y-6">
-          <AnimatedCallButton 
-            isListening={isListening}
-            onStart={handleStartConversation}
-            onStop={handleStopConversation}
+    <div className="min-h-screen" style={{ background: 'rgb(33,33,33)' }}>
+      <div className="max-w-4xl mx-auto space-y-6">
+        {/* Animated Call Button Section */}
+        <div className="fixed inset-0 flex items-center justify-center">
+          <AnimatedCallButton
+            label={speechRecognition.isRecording ? 'End Call' : 'Start Call'}
+            onClick={speechRecognition.isRecording ? stopRecording : startRecording}
           />
-          
-          <div className="flex gap-4">
-            <Button 
-              onClick={handleClearHistory}
-              variant="outline"
-              className="bg-black/20 border-white/20 text-white hover:bg-white/10"
+        </div>
+
+        {/* Document Upload section removed; upload now handled by FAB PDF button */}
+
+        {/* Floating Action Button (FAB) and Menu */}
+        <div style={{ position: 'fixed', right: 32, bottom: 32, zIndex: 100 }}>
+          <div className="relative flex flex-col items-end">
+            {/* Quarter-arc placement relative to + button */}
+            {/* Automate at radius1 top (0,-76) */}
+            <div className="absolute bottom-0 right-0" style={{ transform: `translate(0px, ${fabOpen ? -76 : 0}px)`, opacity: fabOpen ? 1 : 0, pointerEvents: fabOpen ? 'auto' : 'none', transition: 'transform 250ms ease, opacity 250ms ease' }}>
+              <div className="w-[60px] h-[60px] flex items-center justify-center p-1 rounded-full border border-gray-500/20 bg-[#181818] shadow-lg hover:shadow-gray-500/30 hover:scale-110 transition-all duration-300 group">
+                <AutomatePowerSwitch checked={isAutomateEnabled} onChange={handleAutomateToggle} />
+              </div>
+            </div>
+
+            {/* Pricing removed for right FAB */}
+
+            {/* Spotify moved to diagonal (-72,-72) after swap; feedback removed */}
+            <div className="absolute bottom-0 right-0" style={{ transform: `translate(${fabOpen ? -70 : 0}px, ${fabOpen ? -67 : 0}px)`, opacity: fabOpen ? 1 : 0, pointerEvents: fabOpen ? 'auto' : 'none', transition: 'transform 250ms ease, opacity 250ms ease' }}>
+              <button className="w-[60px] h-[60px] flex items-center justify-center p-1 rounded-full border border-green-500/20 bg-[#181818] shadow-lg hover:shadow-green-500/30 hover:scale-110 transition-all duration-300 group" onClick={() => spotifyService.initiateAuth()} title="Connect Spotify">
+                <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" className="w-7 h-7" fill="#1DB954"><path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z"/></svg>
+              </button>
+            </div>
+
+            {/* Upload moved to radius1 left (-76,0); logout removed */}
+            <div className="absolute bottom-0 right-0" style={{ transform: `translate(${fabOpen ? -80 : 0}px, 0px)`, opacity: fabOpen ? 1 : 0, pointerEvents: fabOpen ? 'auto' : 'none', transition: 'transform 250ms ease, opacity 250ms ease' }}>
+              <label className="w-[60px] h-[60px] flex items-center justify-center p-1 rounded-full border border-blue-500/20 bg-[#181818] shadow-lg hover:shadow-blue-500/30 hover:scale-110 transition-all duration-300 group cursor-pointer">
+                <input type="file" accept=".txt,.pdf" onChange={async (e) => { const files = e.target.files; if (!files || !user) return; const file = files[0]; if (!(await import('@/services/documentService')).documentService.isFileTypeSupported(file)) { toast({ title: 'Unsupported File Type', description: 'Please upload .txt or .pdf files only.', variant: 'destructive' }); return; } try { const { documentService } = await import('@/services/documentService'); const uploadedDoc = await documentService.uploadDocument(file, user.id); setLastUploadedDocument(uploadedDoc); toast({ title: 'Upload Successful', description: 'Should I summarize the file or if you wish anything else let me know.' }); await handleDocumentUpload('Upload successful! Should I summarize the file or if you wish anything else let me know.', uploadedDoc); } catch (error) { toast({ title: 'Upload Failed', description: error instanceof Error ? error.message : 'Failed to upload document.', variant: 'destructive' }); } finally { e.target.value = ''; } }} className="hidden" />
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640" className="w-8 h-8" fill="#3b82f6"><path d="M128 64C92.7 64 64 92.7 64 128L64 512C64 547.3 92.7 576 128 576L208 576L208 464C208 428.7 236.7 400 272 400L448 400L448 234.5C448 217.5 441.3 201.2 429.3 189.2L322.7 82.7C310.7 70.7 294.5 64 277.5 64L128 64zM389.5 240L296 240C282.7 240 272 229.3 272 216L272 122.5L389.5 240zM272 444C261 444 252 453 252 464L252 592C252 603 261 612 272 612C283 612 292 603 292 592L292 564L304 564C337.1 564 364 537.1 364 504C364 470.9 337.1 444 304 444L272 444zM304 524L292 524L292 484L304 484C315 484 324 493 324 504C324 515 315 524 304 524zM400 444C389 444 380 453 380 464L380 592C380 603 389 612 400 612L432 612C460.7 612 484 588.7 484 560L484 496C484 467.3 460.7 444 432 444L400 444zM420 572L420 484L432 484C438.6 484 444 489.4 444 496L444 560C444 566.6 438.6 572 432 572L420 572zM508 464L508 592C508 603 517 612 528 612C539 612 548 603 548 592L548 548L576 548C587 548 596 539 596 528C596 517 587 508 576 508L548 508L548 484L576 484C587 484 596 475 596 464C596 453 587 444 576 444L528 444C517 444 508 453 508 464z"/></svg>
+              </label>
+            </div>
+
+            {/* Former far-left upload removed */}
+            {/* Main FAB (+) Button */}
+            <button
+              className={`relative w-[60px] h-[60px] rounded-full bg-[#2e2e2e] shadow-lg flex items-center justify-center transition-all duration-200 ${fabOpen ? 'scale-90' : 'scale-100'}`}
+              style={{ boxShadow: '0 6px 10px 0 rgba(0,0,0,0.3)' }}
+              onClick={() => setFabOpen(v => !v)}
+              aria-label="Open actions"
             >
-              Clear History
-            </Button>
-            
-            <Button 
-              onClick={() => window.location.href = '/pricing'}
-              className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white border-0"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 36 24" className="w-5 h-5 mr-2 fill-current">
-                <path d="m18 0 8 12 10-8-4 20H4L0 4l10 8 8-12z" />
+              <svg className={`transition-transform duration-500 w-[30px] h-[30px] ${fabOpen ? 'rotate-45' : 'rotate-0'}`} viewBox="0 0 48 48" width="48" height="48">
+                <circle cx="24" cy="24" r="24" fill="none" />
+                <g>
+                  <rect x="22" y="12" width="4" height="24" rx="2" fill="#fff" />
+                  <rect x="12" y="22" width="24" height="4" rx="2" fill="#fff" />
+                </g>
               </svg>
-              Pricing
-            </Button>
+            </button>
           </div>
         </div>
 
-        {conversation.length > 0 && (
-          <div className="w-full max-w-2xl space-y-4 max-h-96 overflow-y-auto bg-black/20 backdrop-blur-sm rounded-xl p-6 border border-white/10">
-            {conversation.map((message, index) => (
-              <div
-                key={index}
-                className={`p-4 rounded-lg ${
-                  message.role === 'user'
-                    ? 'bg-blue-600/20 text-blue-100 ml-8'
-                    : 'bg-purple-600/20 text-purple-100 mr-8'
-                }`}
-              >
-                <div className="font-semibold text-sm mb-1 opacity-75">
-                  {message.role === 'user' ? 'You' : 'VoiceOS'}
-                </div>
-                <div>{message.content}</div>
-              </div>
-            ))}
-            
-            {currentResponse && (
-              <div className="p-4 rounded-lg bg-purple-600/20 text-purple-100 mr-8">
-                <div className="font-semibold text-sm mb-1 opacity-75">VoiceOS</div>
-                <div>{currentResponse}</div>
-              </div>
-            )}
-          </div>
-        )}
       </div>
-
-      <FloatingActionButtons
-        isSpotifyEnabled={isSpotifyEnabled}
-        isSpotifyConnected={isSpotifyConnected}
-        isAutomateEnabled={isAutomateEnabled}
-        isAutomateConnected={isAutomateConnected}
-        onSpotifyToggle={handleSpotifyToggle}
-        onAutomateToggle={handleAutomateToggle}
-        onDocumentUpload={handleDocumentUpload}
-      />
+      {/* Feedback Modal */}
+      {feedbackOpen && (
+        <div className="fixed inset-0 z-[200] bg-black/60 flex items-center justify-center">
+          <div className="w-full max-w-md bg-[#1f1f1f] text-white rounded-xl border border-white/10 p-6 shadow-2xl">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xl font-semibold">Share your feedback</h3>
+              <button onClick={() => setFeedbackOpen(false)} className="text-gray-400 hover:text-white">✕</button>
+            </div>
+            <div className="mb-4">
+              <p className="mb-2 text-sm text-gray-300">Rate your experience</p>
+              <div className="flex gap-2">
+                {[1,2,3,4,5].map((n) => (
+                  <button
+                    key={n}
+                    onClick={() => setFeedbackRating(n)}
+                    className={`w-9 h-9 rounded-full flex items-center justify-center border transition-colors ${feedbackRating >= n ? 'bg-yellow-400/90 border-yellow-400 text-black' : 'border-white/20 hover:border-white/40'}`}
+                    aria-label={`Rate ${n}`}
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" className="w-5 h-5" fill={feedbackRating >= n ? '#0f172a' : '#e5e7eb'}>
+                      <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/>
+                    </svg>
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="mb-4">
+              <p className="mb-2 text-sm text-gray-300">Your comments</p>
+              <textarea
+                value={feedbackText}
+                onChange={(e) => setFeedbackText(e.target.value)}
+                placeholder="Tell us what you liked or what could be better..."
+                className="w-full h-28 bg-[#121212] border border-white/10 rounded-md p-3 outline-none focus:border-blue-500/50 resize-none"
+              />
+            </div>
+            <div className="flex justify-end gap-3">
+              <button onClick={() => setFeedbackOpen(false)} className="px-4 py-2 rounded-md bg-[#2a2a2a] hover:bg-[#343434]">Cancel</button>
+              <button
+                onClick={() => {
+                  setFeedbackOpen(false);
+                  toast({ title: 'Thank you!', description: 'Your feedback has been recorded.' });
+                  setFeedbackRating(0);
+                  setFeedbackText('');
+                }}
+                className="px-4 py-2 rounded-md bg-blue-600 hover:bg-blue-500"
+              >
+                Submit
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Lower-left FAB with Feedback, Pricing, Logout */}
+      <div style={{ position: 'fixed', left: 32, bottom: 32, zIndex: 100 }}>
+        <div className="relative flex flex-col items-start">
+          {/* Feedback top (0,-120) */}
+          <div className="absolute bottom-0 left-0" style={{ transform: `translate(0px, ${fabLeftOpen ? -76 : 0}px)`, opacity: fabLeftOpen ? 1 : 0, pointerEvents: fabLeftOpen ? 'auto' : 'none', transition: 'transform 250ms ease, opacity 250ms ease' }}>
+            <button onClick={() => setFeedbackOpen(true)} title="Feedback" className="w-[60px] h-[60px] flex items-center justify-center p-1 rounded-full border border-yellow-500/20 bg-[#181818] shadow-lg hover:shadow-yellow-500/30 hover:scale-110 transition-all duration-300 group">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" className="w-8 h-8" fill="#facc15"><path d="M20 2H4a2 2 0 0 0-2 2v14l4-4h14a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2z"/><path d="M12 6l1.176 2.381L16 8.764l-2 1.953.471 2.748L12 12.764l-2.471 1.701L10 10.717 8 8.764l2.824-.383L12 6z" fill="#0f172a"/></svg>
+            </button>
+          </div>
+          {/* Pricing diagonal (icon-only inside black button with gradient hover overlay) */}
+          <div className="absolute bottom-0 left-0" style={{ transform: `translate(${fabLeftOpen ? 69 : 0}px, ${fabLeftOpen ? -69 : 0}px)`, opacity: fabLeftOpen ? 1 : 0, pointerEvents: fabLeftOpen ? 'auto' : 'none', transition: 'transform 250ms ease, opacity 250ms ease' }}>
+            <button
+              onClick={() => navigate('/pricing')}
+              aria-label="Pricing"
+              className="relative group w-[60px] h-[60px] flex items-center justify-center rounded-full border border-white/10 bg-[#181818] shadow-lg hover:scale-110 transition-all duration-300"
+            >
+              <span
+                className="absolute inset-0 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                style={{
+                  background:
+                    'linear-gradient(15deg,#880088,#aa2068,#cc3f47,#de6f3d,#f09f33,#de6f3d,#cc3f47,#aa2068,#880088)'
+                }}
+              />
+              <svg className="relative z-10" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 36 24" width="23" height="23">
+                <defs>
+                  <linearGradient id="priceGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+                    <stop offset="0%" stopColor="#880088" />
+                    <stop offset="35%" stopColor="#cc3f47" />
+                    <stop offset="70%" stopColor="#f09f33" />
+                  </linearGradient>
+                </defs>
+                <path d="m18 0 8 12 10-8-4 20H4L0 4l10 8 8-12z" fill="url(#priceGrad)" />
+              </svg>
+            </button>
+          </div>
+          {/* Logout right (120,0) */}
+          <div className="absolute bottom-0 left-0" style={{ transform: `translate(${fabLeftOpen ? 80 : 0}px, 0px)`, opacity: fabLeftOpen ? 1 : 0, pointerEvents: fabLeftOpen ? 'auto' : 'none', transition: 'transform 250ms ease, opacity 250ms ease' }}>
+            <button onClick={handleSignOut} title="Logout" className="w-[60px] h-[60px] flex items-center justify-center p-1 rounded-full border border-red-500/20 bg-[#181818] shadow-lg hover:shadow-red-500/30 hover:scale-110 transition-all duration-300 group">
+              <svg className="w-7 h-7 text-red-500 group-hover:text-red-400 transition-colors duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
+            </button>
+          </div>
+          {/* Left FAB (+) */}
+          <button
+            className={`relative w-[60px] h-[60px] rounded-full bg-[#2e2e2e] shadow-lg flex items-center justify-center transition-all duration-200 ${fabLeftOpen ? 'scale-90' : 'scale-100'}`}
+            style={{ boxShadow: '0 6px 10px 0 rgba(0,0,0,0.3)' }}
+            onClick={() => setFabLeftOpen(v => !v)}
+            aria-label="Open actions left"
+          >
+            <svg className={`transition-transform duration-500 w-[30px] h-[30px] ${fabLeftOpen ? 'rotate-45' : 'rotate-0'}`} viewBox="0 0 48 48" width="48" height="48">
+              <circle cx="24" cy="24" r="24" fill="none" />
+              <g>
+                <rect x="22" y="12" width="4" height="24" rx="2" fill="#fff" />
+                <rect x="12" y="22" width="24" height="4" rx="2" fill="#fff" />
+              </g>
+            </svg>
+          </button>
+        </div>
+      </div>
     </div>
   );
 };
