@@ -13,7 +13,7 @@ serve(async (req) => {
 
   try {
     // Use your actual Spotify client ID
-    const SPOTIFY_CLIENT_ID = '2a6fa47fd715402b9bd176a9a958175d'
+    const SPOTIFY_CLIENT_ID = 'b9cb88208a414f018feac12ebd9821e3'
     const SPOTIFY_CLIENT_SECRET = Deno.env.get('SPOTIFY_CLIENT_SECRET')
     
     if (!SPOTIFY_CLIENT_SECRET) {
