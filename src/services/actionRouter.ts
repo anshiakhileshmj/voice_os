@@ -3,6 +3,7 @@ import { llmService, ConversationMessage } from './llmService';
 import { locationService } from './locationService';
 import { documentService } from './documentService';
 import { automateService, AutomateAction } from './automateService';
+import { subscriptionService } from './subscriptionService';
 import { supabase } from '@/integrations/supabase/client';
 
 export interface IntentResult {
@@ -23,7 +24,7 @@ export class ActionRouter {
   async processUserInput(
     userInput: string,
     conversationHistory: ConversationMessage[],
-    isAutomateEnabled: boolean = true // Set default to true
+    isAutomateEnabled: boolean = true
   ): Promise<{ intent: IntentResult; actionResult?: ActionResult; llmResponse?: string }> {
     
     // First, detect intent using enhanced LLM
@@ -272,6 +273,33 @@ Respond ONLY with valid JSON.`;
 
   private async handlePlaySong(params?: Record<string, any>): Promise<ActionResult> {
     try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        return {
+          success: false,
+          message: "Please sign in to use Spotify features.",
+          requiresTTS: true
+        };
+      }
+
+      // Check Spotify usage limits before attempting to play
+      const canUse = await subscriptionService.canUseFeature(user.id, 'spotify');
+      if (!canUse) {
+        const [subscription, usage] = await Promise.all([
+          subscriptionService.getUserSubscription(user.id),
+          subscriptionService.getCurrentUsage(user.id)
+        ]);
+        
+        const plan = subscriptionService.getPlan(subscription?.tier || 'free');
+        const limit = plan?.features.spotifyPlays || 0;
+        
+        return {
+          success: false,
+          message: `You've reached your monthly Spotify limit of ${limit} plays. Upgrade your plan to continue or wait for next month.`,
+          requiresTTS: true
+        };
+      }
+
       if (!await spotifyService.isConnected()) {
         return {
           success: false,
@@ -325,6 +353,9 @@ Respond ONLY with valid JSON.`;
 
       // Play track
       await spotifyService.playTrack(track.uri, activeDevice?.id);
+      
+      // Increment Spotify usage after successful play
+      await subscriptionService.incrementUsage(user.id, 'spotify');
       
       return {
         success: true,

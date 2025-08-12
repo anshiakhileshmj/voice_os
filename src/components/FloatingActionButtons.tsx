@@ -89,10 +89,10 @@ const FloatingActionButtons: React.FC<FloatingActionButtonsProps> = ({
   };
 
   const handleSpotifyToggle = async () => {
+    // Always show the Spotify Premium popup first when clicking the button
+    setShowSpotifyPremiumPopup(true);
+    
     if (!isSpotifyEnabled) {
-      // Show Spotify Premium popup first
-      setShowSpotifyPremiumPopup(true);
-      
       onSpotifyToggle(true);
       if (!isSpotifyConnected) {
         try {
