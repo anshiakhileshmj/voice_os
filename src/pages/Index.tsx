@@ -12,6 +12,7 @@ import { supabase } from '@/integrations/supabase/client';
 // Removed DocumentUpload section per UI change
 import AutomatePowerSwitch from '../components/AutomatePowerSwitch';
 import AnimatedCallButton from '../components/AnimatedCallButton';
+import SpotifyNote from '../components/SpotifyNote';
 
 interface TranscriptEntry {
   id: string;
@@ -396,6 +397,11 @@ const Index = () => {
             label={speechRecognition.isRecording ? 'End Call' : 'Start Call'}
             onClick={speechRecognition.isRecording ? stopRecording : startRecording}
           />
+        </div>
+
+        {/* Spotify Note */}
+        <div className="fixed inset-0 flex items-center justify-center" style={{ top: '60%' }}>
+          <SpotifyNote />
         </div>
 
         {/* Document Upload section removed; upload now handled by FAB PDF button */}
