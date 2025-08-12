@@ -21,7 +21,8 @@ export interface SpotifyTrack {
 
 export class SpotifyService {
   private static readonly SPOTIFY_AUTH_URL = 'https://accounts.spotify.com/authorize';
-  private static readonly REDIRECT_URI = 'https://voice-os.vercel.app';
+  // Must match the Redirect URI configured in the Spotify Developer Dashboard
+  private static readonly REDIRECT_URI = 'https://voice-os.vercel.app/app';
   private static readonly SCOPES = [
     'user-read-private',
     'user-read-email',
@@ -213,9 +214,19 @@ export class SpotifyService {
   }
 
   private async getClientId(): Promise<string> {
-    const response = await fetch('https://uasluhbtcpuigwkuslum.supabase.co/functions/v1/spotify-auth/client-id');
-    const data = await response.json();
-    return data.client_id;
+    // Prefer Supabase Edge Function but fall back to env/constant to avoid "undefined" client_id
+    try {
+      const response = await fetch('https://uasluhbtcpuigwkuslum.supabase.co/functions/v1/spotify-auth/client-id');
+      if (response.ok) {
+        const data = await response.json();
+        if (data?.client_id) return data.client_id as string;
+      }
+    } catch {
+      // ignore and fall through to fallback
+    }
+
+    const envClientId = (import.meta as any)?.env?.VITE_SPOTIFY_CLIENT_ID as string | undefined;
+    return envClientId || 'b9cb88208a414f018feac12ebd9821e3';
   }
 
   private generateRandomString(length: number): string {
