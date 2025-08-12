@@ -1,4 +1,3 @@
-
 import React from 'react';
 import styled from 'styled-components';
 import { SubscriptionPlan } from '@/services/subscriptionService';
@@ -29,7 +28,8 @@ const PricingCard: React.FC<PricingCardProps> = ({ plan, onSelectPlan, isCurrent
     },
     {
       name: 'Spotify Integration',
-      value: 'Music control & playback',
+      value: plan.features.spotifyPlays === 'unlimited' ? 'Unlimited plays' : 
+             plan.features.spotifyIntegration ? `${plan.features.spotifyPlays} plays/month` : 'Not included',
       included: plan.features.spotifyIntegration
     },
     {

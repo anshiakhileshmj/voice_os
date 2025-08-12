@@ -11,6 +11,7 @@ export interface SubscriptionPlan {
     automations: number | 'unlimited';
     documentsProcessed: number | 'unlimited';
     spotifyIntegration: boolean;
+    spotifyPlays: number | 'unlimited';
     contextMemory: boolean;
     emailSupport: boolean;
   };
@@ -25,8 +26,9 @@ export const SUBSCRIPTION_PLANS: SubscriptionPlan[] = [
     features: {
       voiceInteractions: 50,
       automations: 5,
-      documentsProcessed: 0,
-      spotifyIntegration: false,
+      documentsProcessed: 2,
+      spotifyIntegration: true,
+      spotifyPlays: 3,
       contextMemory: true,
       emailSupport: true,
     },
@@ -34,13 +36,14 @@ export const SUBSCRIPTION_PLANS: SubscriptionPlan[] = [
   {
     id: 'starter',
     name: 'Starter',
-    price: 13.99,
+    price: 12.99,
     currency: 'USD',
     features: {
       voiceInteractions: 300,
       automations: 50,
       documentsProcessed: 10,
       spotifyIntegration: true,
+      spotifyPlays: 200,
       contextMemory: true,
       emailSupport: true,
     },
@@ -48,13 +51,14 @@ export const SUBSCRIPTION_PLANS: SubscriptionPlan[] = [
   {
     id: 'pro',
     name: 'Pro',
-    price: 24.99,
+    price: 23.99,
     currency: 'USD',
     features: {
       voiceInteractions: 'unlimited',
       automations: 'unlimited',
       documentsProcessed: 'unlimited',
       spotifyIntegration: true,
+      spotifyPlays: 'unlimited',
       contextMemory: true,
       emailSupport: true,
     },
@@ -65,6 +69,7 @@ export interface UserUsage {
   voiceInteractions: number;
   automationsUsed: number;
   documentsProcessed: number;
+  spotifyPlays: number;
 }
 
 export interface SubscriptionStatus {
@@ -137,6 +142,7 @@ export class SubscriptionService {
           voiceInteractions: 0,
           automationsUsed: 0,
           documentsProcessed: 0,
+          spotifyPlays: 0,
         };
       }
 
@@ -144,6 +150,7 @@ export class SubscriptionService {
         voiceInteractions: usage.voice_interactions || 0,
         automationsUsed: usage.automations_used || 0,
         documentsProcessed: usage.documents_processed || 0,
+        spotifyPlays: usage.spotify_plays || 0,
       };
     } catch (error) {
       console.error('Error getting current usage:', error);
@@ -151,36 +158,33 @@ export class SubscriptionService {
         voiceInteractions: 0,
         automationsUsed: 0,
         documentsProcessed: 0,
+        spotifyPlays: 0,
       };
     }
   }
 
   async incrementUsage(
     userId: string,
-    type: 'voice' | 'automation' | 'document'
+    type: 'voice' | 'automation' | 'document' | 'spotify'
   ): Promise<boolean> {
     try {
       // Check if user can use the feature before incrementing
       const canUse = await this.canUseFeature(userId, type);
       if (!canUse) {
-        const featureNames = {
-          voice: 'voice interactions',
-          automation: 'automations',
-          document: 'document processing'
-        };
-
         return false;
       }
 
       const voiceIncrement = type === 'voice' ? 1 : 0;
       const automationIncrement = type === 'automation' ? 1 : 0;
       const documentIncrement = type === 'document' ? 1 : 0;
+      const spotifyIncrement = type === 'spotify' ? 1 : 0;
 
       const { data, error } = await supabase.rpc('increment_usage', {
         p_user_id: userId,
         p_voice_interactions: voiceIncrement,
         p_automations: automationIncrement,
         p_documents: documentIncrement,
+        p_spotify_plays: spotifyIncrement,
       });
 
       if (error) throw error;
@@ -208,7 +212,9 @@ export class SubscriptionService {
 
       switch (featureType) {
         case 'spotify':
-          return plan.features.spotifyIntegration;
+          if (!plan.features.spotifyIntegration) return false;
+          return plan.features.spotifyPlays === 'unlimited' || 
+                 (typeof plan.features.spotifyPlays === 'number' && usage.spotifyPlays < plan.features.spotifyPlays);
         case 'voice':
           return plan.features.voiceInteractions === 'unlimited' || 
                  (typeof plan.features.voiceInteractions === 'number' && usage.voiceInteractions < plan.features.voiceInteractions);

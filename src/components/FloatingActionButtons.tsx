@@ -1,5 +1,4 @@
-
-import React from 'react';
+import React, { useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Upload, LogOut } from 'lucide-react';
@@ -7,6 +6,8 @@ import { useToast } from '@/hooks/use-toast';
 import { spotifyService } from '@/services/spotifyService';
 import { automateService } from '@/services/automateService';
 import { documentService } from '@/services/documentService';
+import { useSubscription } from '@/hooks/useSubscription';
+import SpotifyPremiumPopup from './SpotifyPremiumPopup';
 
 interface FloatingActionButtonsProps {
   isSpotifyEnabled: boolean;
@@ -29,6 +30,8 @@ const FloatingActionButtons: React.FC<FloatingActionButtonsProps> = ({
 }) => {
   const { signOut, user } = useAuth();
   const { toast } = useToast();
+  const { canUseFeature, incrementUsage } = useSubscription();
+  const [showSpotifyPremiumPopup, setShowSpotifyPremiumPopup] = useState(false);
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -43,7 +46,22 @@ const FloatingActionButtons: React.FC<FloatingActionButtonsProps> = ({
           return;
         }
 
+        // Check if user can use document processing feature
+        const canUse = await canUseFeature('document');
+        if (!canUse) {
+          toast({
+            title: "Document Processing Limit Reached",
+            description: "You've reached your monthly limit for document processing. Upgrade your plan or wait for next month.",
+            variant: "destructive"
+          });
+          return;
+        }
+
         const response = await documentService.uploadDocument(file, user.id);
+        
+        // Increment usage after successful upload
+        await incrementUsage('document');
+        
         onDocumentUpload("PDF uploaded successfully!", response);
         toast({
           title: "PDF Uploaded",
@@ -72,6 +90,9 @@ const FloatingActionButtons: React.FC<FloatingActionButtonsProps> = ({
 
   const handleSpotifyToggle = async () => {
     if (!isSpotifyEnabled) {
+      // Show Spotify Premium popup first
+      setShowSpotifyPremiumPopup(true);
+      
       onSpotifyToggle(true);
       if (!isSpotifyConnected) {
         try {
@@ -151,7 +172,12 @@ const FloatingActionButtons: React.FC<FloatingActionButtonsProps> = ({
         </div>
       </div>
 
-      {/* Embedded CSS using dangerouslySetInnerHTML */}
+      {/* Spotify Premium Popup */}
+      <SpotifyPremiumPopup 
+        isOpen={showSpotifyPremiumPopup}
+        onClose={() => setShowSpotifyPremiumPopup(false)}
+      />
+
       <style dangerouslySetInnerHTML={{
         __html: `
           .power-switch {

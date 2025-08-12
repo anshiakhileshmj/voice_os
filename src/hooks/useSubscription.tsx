@@ -39,7 +39,7 @@ export const useSubscription = () => {
     return await subscriptionService.canUseFeature(user.id, featureType);
   };
 
-  const incrementUsage = async (type: 'voice' | 'automation' | 'document'): Promise<boolean> => {
+  const incrementUsage = async (type: 'voice' | 'automation' | 'document' | 'spotify'): Promise<boolean> => {
     if (!user) return false;
 
     const success = await subscriptionService.incrementUsage(user.id, type);
@@ -50,12 +50,13 @@ export const useSubscription = () => {
       const featureNames = {
         voice: 'voice interactions',
         automation: 'automations',
-        document: 'document processing'
+        document: 'document processing',
+        spotify: 'Spotify plays'
       };
 
       toast({
         title: "Usage Limit Reached",
-        description: `You've reached your monthly limit for ${featureNames[type]}. Upgrade your plan to continue.`,
+        description: `You've reached your monthly limit for ${featureNames[type]}. Upgrade your plan to continue or wait for next month.`,
         variant: "destructive"
       });
     }
@@ -83,6 +84,9 @@ export const useSubscription = () => {
       document: plan.features.documentsProcessed === 'unlimited'
         ? 'unlimited'
         : Math.max(0, (typeof plan.features.documentsProcessed === 'number' ? plan.features.documentsProcessed : 0) - usage.documentsProcessed),
+      spotify: plan.features.spotifyPlays === 'unlimited'
+        ? 'unlimited'
+        : Math.max(0, (typeof plan.features.spotifyPlays === 'number' ? plan.features.spotifyPlays : 0) - usage.spotifyPlays),
     };
   };
 
