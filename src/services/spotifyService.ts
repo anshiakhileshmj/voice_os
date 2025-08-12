@@ -1,3 +1,4 @@
+
 import { supabase } from '@/integrations/supabase/client';
 
 export interface SpotifyTokens {
@@ -32,8 +33,13 @@ export class SpotifyService {
   ].join(' ');
 
   async initiateAuth(): Promise<void> {
+    // Clear any existing state first
+    localStorage.removeItem('spotify_auth_state');
+    
     const state = this.generateRandomString(16);
     localStorage.setItem('spotify_auth_state', state);
+    
+    console.log('Storing auth state:', state);
 
     const params = new URLSearchParams({
       response_type: 'code',
@@ -47,9 +53,20 @@ export class SpotifyService {
   }
 
   async handleCallback(code: string, state: string): Promise<boolean> {
+    console.log('Received state:', state);
+    
     const savedState = localStorage.getItem('spotify_auth_state');
+    console.log('Saved state:', savedState);
+    
+    if (!savedState) {
+      console.error('No saved state found in localStorage');
+      throw new Error('No authentication state found. Please try connecting again.');
+    }
+    
     if (state !== savedState) {
-      throw new Error('Invalid state parameter');
+      console.error('State mismatch - received:', state, 'saved:', savedState);
+      localStorage.removeItem('spotify_auth_state'); // Clean up
+      throw new Error('Authentication state mismatch. Please try connecting again.');
     }
 
     try {
@@ -73,6 +90,7 @@ export class SpotifyService {
       return true;
     } catch (error) {
       console.error('Spotify callback error:', error);
+      localStorage.removeItem('spotify_auth_state'); // Clean up on error
       return false;
     }
   }
