@@ -23,7 +23,7 @@ const SpotifyNote: React.FC = () => {
         
         <div className="pr-8">
           <p className="text-white text-sm text-center leading-relaxed">
-            You Need Spotify Premium to Play songs from Spotify.
+            Spotify feature is currently being built. We'll send you mail once it's live. Thanks.
           </p>
         </div>
       </div>

@@ -1,109 +1,187 @@
-
-import { getAnswer } from './llmService';
-import { LocationData } from '@/types/location';
+import { streamingTTSService } from './streamingTTSService';
+import { languageAwareLLMService } from './languageAwareLLMService';
+import { streamingLLMService } from './streamingLLMService';
 import { spotifyService } from './spotifyService';
-import { subscriptionService } from './subscriptionService';
+import { automateService } from './automateService';
 
-export async function processConversation(
-  message: string,
-  userId: string,
-  locationData?: LocationData
-): Promise<{ response: string; action?: string; data?: any; shouldPlay?: boolean }> {
-  console.log('Processing conversation with simplified router...');
-
-  try {
-    // First check for quick actions with Spotify data
-    const quickAction = await handleQuickActions(message, userId, locationData);
-    if (quickAction) {
-      return quickAction;
-    }
-
-    // If no quick actions are triggered, process with the LLM
-    const answer = await getAnswer(message, userId, locationData);
-    return {
-      response: answer,
-      shouldPlay: true
-    };
-
-  } catch (error) {
-    console.error('Error in processConversation:', error);
-    return {
-      response: "I'm having some technical difficulties right now. Could you try again?",
-      shouldPlay: true
-    };
-  }
+export interface ConversationCallbacks {
+  onLLMChunk: (chunk: string) => void;
+  onLLMComplete: (response: string) => void;
+  onTTSStart: () => void;
+  onTTSComplete: () => void;
+  onError: (error: Error) => void;
 }
 
-async function handleQuickActions(
-  message: string, 
-  userId: string, 
-  locationData?: LocationData
-): Promise<{ 
-  response: string; 
-  action?: string; 
-  data?: any;
-  shouldPlay?: boolean;
-} | null> {
-  const lowerMessage = message.toLowerCase();
+export class SimplifiedActionRouter {
+  private isAutomateEnabled = false;
+  private currentResponse = '';
+  private selectedVoiceId = 'english_us_male'; // Fixed to English US Male
 
-  // Spotify profile information
-  if (lowerMessage.includes('spotify') && (
-    lowerMessage.includes('name') || 
-    lowerMessage.includes('profile') ||
-    lowerMessage.includes('who am i')
-  )) {
+  setAutomateEnabled(enabled: boolean) {
+    this.isAutomateEnabled = enabled;
+  }
+
+  setSelectedVoice(voiceId: string) {
+    // Voice is now fixed to english_us_male, but keeping method for compatibility
+    this.selectedVoiceId = 'english_us_male';
+    console.log('Voice is permanently set to:', this.selectedVoiceId);
+  }
+
+  async processConversation(
+    userInput: string,
+    callbacks: ConversationCallbacks
+  ): Promise<void> {
+    if (!userInput.trim()) return;
+
     try {
-      const profile = await spotifyService.getStoredUserProfile();
-      if (profile) {
-        return {
-          response: `Your Spotify name is ${profile.display_name}. You have a ${profile.product} account.`,
-          shouldPlay: true
-        };
+      // Quick check for specific actions before going to LLM
+      const quickAction = await this.handleQuickActions(userInput);
+      if (quickAction) {
+        callbacks.onLLMComplete(quickAction.message);
+        if (quickAction.speak) {
+          this.handleTTS(quickAction.message, callbacks);
+        }
+        return;
       }
+
+      // Reset current response
+      this.currentResponse = '';
+
+      // Stream language-aware LLM response
+      await languageAwareLLMService.generateLanguageAwareResponse(userInput, {
+        voiceId: this.selectedVoiceId,
+        onChunk: (chunk: string) => {
+          this.currentResponse += chunk;
+          callbacks.onLLMChunk(chunk);
+        },
+        onComplete: (fullResponse: string) => {
+          this.currentResponse = fullResponse;
+          callbacks.onLLMComplete(fullResponse);
+          
+          // Start TTS immediately after LLM completes
+          this.handleTTS(fullResponse, callbacks);
+        },
+        onError: callbacks.onError
+      });
+
     } catch (error) {
-      console.error('Error getting Spotify profile:', error);
+      console.error('Conversation processing error:', error);
+      callbacks.onError(error instanceof Error ? error : new Error('Unknown conversation error'));
     }
   }
 
-  // Music playing
-  if (lowerMessage.includes('play') && lowerMessage.includes('music')) {
-    const isConnected = await spotifyService.isConnected();
-    if (!isConnected) {
-      return {
-        response: "Please connect your Spotify account first to play music.",
-        shouldPlay: true
-      };
+  private async handleQuickActions(userInput: string): Promise<{message: string, speak: boolean, data?: any} | null> {
+    const input = userInput.toLowerCase();
+
+    // Spotify commands
+    if (input.includes('play') && (input.includes('song') || input.includes('music') || input.includes('spotify'))) {
+      try {
+        // Extract song name from input and search/play
+        const songQuery = userInput.replace(/play|song|music|spotify/gi, '').trim();
+        const track = await spotifyService.searchTrack(songQuery);
+        
+        if (!track) {
+          return { message: "I couldn't find that song. Could you try again?", speak: true };
+        }
+
+        const playResult = await spotifyService.playTrack(track.uri);
+        
+        if (!playResult.success) {
+          switch (playResult.error) {
+            case 'premium_required':
+              return { 
+                message: "Spotify Premium is required to control playback. Please upgrade your Spotify account.", 
+                speak: true,
+                data: { showPremiumPopup: true }
+              };
+            case 'no_devices':
+              return { 
+                message: "No Spotify devices found. Please open Spotify on a device first.", 
+                speak: true 
+              };
+            case 'no_active_device':
+              return { 
+                message: "No active Spotify device found. Please start playing something on Spotify first.", 
+                speak: true 
+              };
+            default:
+              return { 
+                message: "I had trouble playing that song. Could you try again?", 
+                speak: true 
+              };
+          }
+        }
+
+        return { message: `Playing ${track.name} by ${track.artist}`, speak: true };
+      } catch (error) {
+        return { message: "I had trouble playing that song. Could you try again?", speak: true };
+      }
     }
 
-    const canUse = await subscriptionService.canUseFeature(userId, 'spotify');
-    if (!canUse) {
-      return {
-        response: "You've reached your Spotify plays limit. Please upgrade your plan.",
-        shouldPlay: true
-      };
+    // Connect Spotify
+    if (input.includes('connect spotify') || input.includes('spotify connect')) {
+      try {
+        await spotifyService.initiateAuth();
+        return { message: "I'm redirecting you to connect your Spotify account.", speak: true };
+      } catch (error) {
+        return { message: "I had trouble connecting to Spotify. Please try again.", speak: true };
+      }
     }
 
-    return {
-      response: "What song would you like me to play?",
-      shouldPlay: true
-    };
-  }
+    // Automation commands (only if enabled)
+    if (this.isAutomateEnabled) {
+      if (input.includes('open') || input.includes('launch') || input.includes('start')) {
+        try {
+          const actions = await automateService.generateActions(`Open application: ${userInput}`);
+          const result = await automateService.executeActions({
+            actions,
+            objective: `Open application: ${userInput}`
+          });
+          return { message: result.message, speak: true };
+        } catch (error) {
+          return { message: "I had trouble opening that application.", speak: true };
+        }
+      }
 
-  // Time
-  if (lowerMessage.includes('time')) {
-    const now = new Date();
-    const timeString = now.toLocaleTimeString();
-    return { response: `The time is ${timeString}`, shouldPlay: true };
-  }
-
-  // Weather (requires location data)
-  if (lowerMessage.includes('weather')) {
-    if (locationData && locationData.city) {
-      return { response: `The weather in ${locationData.city} is sunny.`, shouldPlay: true };
-    } else {
-      return { response: "I need your location to tell you the weather.", shouldPlay: true };
+      if (input.includes('screenshot') || input.includes('capture screen')) {
+        try {
+          const actions = await automateService.generateActions('Take a screenshot');
+          const result = await automateService.executeActions({
+            actions,
+            objective: 'Take a screenshot'
+          });
+          return { message: result.message, speak: true };
+        } catch (error) {
+          return { message: "I had trouble taking a screenshot.", speak: true };
+        }
+      }
     }
+
+    return null;
   }
 
-  return null;
+  private async handleTTS(text: string, callbacks: ConversationCallbacks) {
+    callbacks.onTTSStart();
+    
+    await streamingTTSService.convertStreamingTextToSpeech(text, {
+      voiceId: this.selectedVoiceId,
+      rate: '0%',
+      pitch: '0Hz',
+      onComplete: () => {
+        callbacks.onTTSComplete();
+      },
+      onError: callbacks.onError
+    });
+  }
+
+  stopCurrentConversation() {
+    streamingLLMService.stopStreaming();
+    streamingTTSService.stopPlayback();
+  }
+
+  clearConversationHistory() {
+    streamingLLMService.clearHistory();
+  }
 }
+
+export const simplifiedActionRouter = new SimplifiedActionRouter();
