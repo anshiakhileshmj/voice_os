@@ -109,6 +109,168 @@ export type Database = {
         }
         Relationships: []
       }
+      spotify_artists: {
+        Row: {
+          created_at: string
+          followers_count: number | null
+          genres: Json | null
+          id: string
+          image_url: string | null
+          name: string
+          popularity: number | null
+          spotify_artist_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          followers_count?: number | null
+          genres?: Json | null
+          id?: string
+          image_url?: string | null
+          name: string
+          popularity?: number | null
+          spotify_artist_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          followers_count?: number | null
+          genres?: Json | null
+          id?: string
+          image_url?: string | null
+          name?: string
+          popularity?: number | null
+          spotify_artist_id?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      spotify_playlists: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          is_collaborative: boolean | null
+          is_public: boolean | null
+          name: string
+          owner_id: string | null
+          spotify_playlist_id: string
+          track_count: number | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_collaborative?: boolean | null
+          is_public?: boolean | null
+          name: string
+          owner_id?: string | null
+          spotify_playlist_id: string
+          track_count?: number | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_collaborative?: boolean | null
+          is_public?: boolean | null
+          name?: string
+          owner_id?: string | null
+          spotify_playlist_id?: string
+          track_count?: number | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      spotify_profiles: {
+        Row: {
+          country: string | null
+          created_at: string
+          display_name: string | null
+          email: string | null
+          followers_count: number | null
+          id: string
+          product: string | null
+          profile_image_url: string | null
+          spotify_user_id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          country?: string | null
+          created_at?: string
+          display_name?: string | null
+          email?: string | null
+          followers_count?: number | null
+          id?: string
+          product?: string | null
+          profile_image_url?: string | null
+          spotify_user_id: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          country?: string | null
+          created_at?: string
+          display_name?: string | null
+          email?: string | null
+          followers_count?: number | null
+          id?: string
+          product?: string | null
+          profile_image_url?: string | null
+          spotify_user_id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      spotify_tracks: {
+        Row: {
+          album_name: string | null
+          artist_names: string
+          created_at: string
+          duration_ms: number | null
+          id: string
+          image_url: string | null
+          name: string
+          popularity: number | null
+          preview_url: string | null
+          spotify_track_id: string
+          user_id: string
+        }
+        Insert: {
+          album_name?: string | null
+          artist_names: string
+          created_at?: string
+          duration_ms?: number | null
+          id?: string
+          image_url?: string | null
+          name: string
+          popularity?: number | null
+          preview_url?: string | null
+          spotify_track_id: string
+          user_id: string
+        }
+        Update: {
+          album_name?: string | null
+          artist_names?: string
+          created_at?: string
+          duration_ms?: number | null
+          id?: string
+          image_url?: string | null
+          name?: string
+          popularity?: number | null
+          preview_url?: string | null
+          spotify_track_id?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       subscribers: {
         Row: {
           created_at: string

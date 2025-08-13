@@ -1,4 +1,5 @@
 import { supabase } from '@/integrations/supabase/client';
+import { spotifyWebPlaybackService } from './spotifyWebPlaybackService';
 
 export interface SpotifyTokens {
   access_token: string;
@@ -25,6 +26,27 @@ export interface SpotifyUserProfile {
   email: string;
   product: 'free' | 'premium';
   country: string;
+  followers?: { total: number };
+  images?: Array<{ url: string; height: number; width: number }>;
+}
+
+export interface SpotifyPlaylist {
+  id: string;
+  name: string;
+  description: string;
+  tracks: { total: number };
+  public: boolean;
+  collaborative: boolean;
+  owner: { id: string };
+}
+
+export interface SpotifyArtist {
+  id: string;
+  name: string;
+  genres: string[];
+  popularity: number;
+  followers: { total: number };
+  images: Array<{ url: string; height: number; width: number }>;
 }
 
 export class SpotifyService {
@@ -35,7 +57,11 @@ export class SpotifyService {
     'user-read-email',
     'user-read-playback-state',
     'user-modify-playback-state',
-    'streaming'
+    'streaming',
+    'playlist-read-private',
+    'playlist-read-collaborative',
+    'user-top-read',
+    'user-library-read'
   ].join(' ');
 
   async initiateAuth(): Promise<void> {
@@ -130,6 +156,12 @@ export class SpotifyService {
       
       await this.saveTokens(tokens);
       
+      // Fetch and store user data after successful authentication
+      await this.fetchAndStoreUserData();
+      
+      // Initialize Web Playback SDK
+      await this.initializeWebPlayer();
+      
       // Clean up stored state
       localStorage.removeItem('spotify_auth_state');
       
@@ -141,6 +173,194 @@ export class SpotifyService {
       localStorage.removeItem('spotify_auth_state');
       return false;
     }
+  }
+
+  async fetchAndStoreUserData(): Promise<void> {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('User not authenticated');
+
+      const profile = await this.getUserProfile();
+      
+      // Store user profile
+      await supabase
+        .from('spotify_profiles')
+        .upsert({
+          user_id: user.id,
+          spotify_user_id: profile.id,
+          display_name: profile.display_name,
+          email: profile.email,
+          country: profile.country,
+          product: profile.product,
+          followers_count: profile.followers?.total || 0,
+          profile_image_url: profile.images?.[0]?.url || null,
+          updated_at: new Date().toISOString()
+        });
+
+      // Fetch and store playlists
+      await this.fetchAndStorePlaylists(user.id);
+      
+      // Fetch and store top artists
+      await this.fetchAndStoreTopArtists(user.id);
+      
+      // Fetch and store top tracks
+      await this.fetchAndStoreTopTracks(user.id);
+
+      console.log('User data fetched and stored successfully');
+    } catch (error) {
+      console.error('Error fetching and storing user data:', error);
+    }
+  }
+
+  async fetchAndStorePlaylists(userId: string): Promise<void> {
+    const accessToken = await this.getValidAccessToken();
+    if (!accessToken) return;
+
+    const response = await fetch('https://api.spotify.com/v1/me/playlists?limit=50', {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+
+    if (!response.ok) return;
+
+    const data = await response.json();
+    const playlists = data.items || [];
+
+    for (const playlist of playlists) {
+      await supabase
+        .from('spotify_playlists')
+        .upsert({
+          user_id: userId,
+          spotify_playlist_id: playlist.id,
+          name: playlist.name,
+          description: playlist.description || '',
+          track_count: playlist.tracks.total,
+          is_public: playlist.public,
+          is_collaborative: playlist.collaborative,
+          owner_id: playlist.owner.id,
+          updated_at: new Date().toISOString()
+        });
+    }
+  }
+
+  async fetchAndStoreTopArtists(userId: string): Promise<void> {
+    const accessToken = await this.getValidAccessToken();
+    if (!accessToken) return;
+
+    const response = await fetch('https://api.spotify.com/v1/me/top/artists?limit=50', {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+
+    if (!response.ok) return;
+
+    const data = await response.json();
+    const artists = data.items || [];
+
+    for (const artist of artists) {
+      await supabase
+        .from('spotify_artists')
+        .upsert({
+          user_id: userId,
+          spotify_artist_id: artist.id,
+          name: artist.name,
+          genres: artist.genres,
+          popularity: artist.popularity,
+          followers_count: artist.followers.total,
+          image_url: artist.images?.[0]?.url || null
+        });
+    }
+  }
+
+  async fetchAndStoreTopTracks(userId: string): Promise<void> {
+    const accessToken = await this.getValidAccessToken();
+    if (!accessToken) return;
+
+    const response = await fetch('https://api.spotify.com/v1/me/top/tracks?limit=50', {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+
+    if (!response.ok) return;
+
+    const data = await response.json();
+    const tracks = data.items || [];
+
+    for (const track of tracks) {
+      await supabase
+        .from('spotify_tracks')
+        .upsert({
+          user_id: userId,
+          spotify_track_id: track.id,
+          name: track.name,
+          artist_names: track.artists.map((a: any) => a.name).join(', '),
+          album_name: track.album.name,
+          duration_ms: track.duration_ms,
+          popularity: track.popularity,
+          preview_url: track.preview_url,
+          image_url: track.album.images?.[0]?.url || null
+        });
+    }
+  }
+
+  async initializeWebPlayer(): Promise<void> {
+    const accessToken = await this.getValidAccessToken();
+    if (!accessToken) return;
+
+    try {
+      const webPlayer = await spotifyWebPlaybackService.initializePlayer(accessToken);
+      if (webPlayer) {
+        console.log('Spotify Web Player initialized:', webPlayer.device_id);
+      }
+    } catch (error) {
+      console.error('Failed to initialize web player:', error);
+    }
+  }
+
+  async getStoredUserProfile(): Promise<any> {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return null;
+
+    const { data } = await supabase
+      .from('spotify_profiles')
+      .select('*')
+      .eq('user_id', user.id)
+      .single();
+
+    return data;
+  }
+
+  async getStoredPlaylists(): Promise<any[]> {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return [];
+
+    const { data } = await supabase
+      .from('spotify_playlists')
+      .select('*')
+      .eq('user_id', user.id);
+
+    return data || [];
+  }
+
+  async getStoredTopArtists(): Promise<any[]> {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return [];
+
+    const { data } = await supabase
+      .from('spotify_artists')
+      .select('*')
+      .eq('user_id', user.id);
+
+    return data || [];
+  }
+
+  async getStoredTopTracks(): Promise<any[]> {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return [];
+
+    const { data } = await supabase
+      .from('spotify_tracks')
+      .select('*')
+      .eq('user_id', user.id);
+
+    return data || [];
   }
 
   async isConnected(): Promise<boolean> {
@@ -244,8 +464,19 @@ export class SpotifyService {
         return { success: false, error: 'premium_required' };
       }
 
-      // Get devices
-      const devices = await this.getDevices();
+      // Get devices (including web player if available)
+      let devices = await this.getDevices();
+      
+      // Add web player device if available
+      const webPlayerDeviceId = spotifyWebPlaybackService.getDeviceId();
+      if (webPlayerDeviceId && spotifyWebPlaybackService.isPlayerReady()) {
+        devices.unshift({
+          id: webPlayerDeviceId,
+          name: 'Voice OS Web Player',
+          type: 'Computer',
+          is_active: false
+        });
+      }
       
       if (devices.length === 0) {
         return { success: false, error: 'no_devices' };

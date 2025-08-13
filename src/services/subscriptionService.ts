@@ -182,18 +182,20 @@ export class SubscriptionService {
         return false;
       }
 
-      // Handle spotify separately since the RPC doesn't support p_spotify_plays yet
+      // For now, we'll track spotify plays locally since the RPC doesn't support it yet
       if (type === 'spotify') {
-        // For now, we'll skip incrementing spotify plays in the RPC
-        // TODO: Add spotify plays support to the increment_usage RPC
-        console.log('Spotify play counted (RPC support pending)');
+        // Store Spotify play in localStorage for now
+        const currentMonth = new Date().toISOString().substring(0, 7); // YYYY-MM
+        const key = `spotify_plays_${userId}_${currentMonth}`;
+        const currentPlays = parseInt(localStorage.getItem(key) || '0');
+        localStorage.setItem(key, (currentPlays + 1).toString());
+        console.log('Spotify play tracked locally');
         return true;
       }
 
       const voiceIncrement = type === 'voice' ? 1 : 0;
       const automationIncrement = type === 'automation' ? 1 : 0;
       const documentIncrement = type === 'document' ? 1 : 0;
-      // Note: p_spotify_plays parameter is not supported by the current RPC
 
       const { data, error } = await supabase.rpc('increment_usage', {
         p_user_id: userId,
@@ -228,8 +230,14 @@ export class SubscriptionService {
       switch (featureType) {
         case 'spotify':
           if (!plan.features.spotifyIntegration) return false;
+          
+          // For Spotify, check localStorage for current month plays
+          const currentMonth = new Date().toISOString().substring(0, 7);
+          const key = `spotify_plays_${userId}_${currentMonth}`;
+          const spotifyPlays = parseInt(localStorage.getItem(key) || '0');
+          
           return plan.features.spotifyPlays === 'unlimited' || 
-                 (typeof plan.features.spotifyPlays === 'number' && usage.spotifyPlays < plan.features.spotifyPlays);
+                 (typeof plan.features.spotifyPlays === 'number' && spotifyPlays < plan.features.spotifyPlays);
         case 'voice':
           return plan.features.voiceInteractions === 'unlimited' || 
                  (typeof plan.features.voiceInteractions === 'number' && usage.voiceInteractions < plan.features.voiceInteractions);
