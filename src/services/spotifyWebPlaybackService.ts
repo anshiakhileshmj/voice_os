@@ -31,9 +31,10 @@ export class SpotifyWebPlaybackService {
   }
 
   private createPlayer(accessToken: string, resolve: (player: SpotifyWebPlayer | null) => void) {
-    this.player = new window.Spotify.Player({
+    // Use window.Spotify.Player constructor
+    this.player = new (window.Spotify.Player as any)({
       name: 'Voice OS Web Player',
-      getOAuthToken: (cb) => cb(accessToken),
+      getOAuthToken: (cb: (token: string) => void) => cb(accessToken),
       volume: 0.5
     });
 

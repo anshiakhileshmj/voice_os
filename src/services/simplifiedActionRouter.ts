@@ -1,3 +1,4 @@
+
 import { getAnswer } from './llmService';
 import { LocationData } from '@/types/location';
 import { spotifyService } from './spotifyService';
@@ -6,13 +7,13 @@ import { subscriptionService } from './subscriptionService';
 export async function processConversation(
   message: string,
   userId: string,
-  locationData?: any
+  locationData?: LocationData
 ): Promise<{ response: string; action?: string; data?: any; shouldPlay?: boolean }> {
   console.log('Processing conversation with simplified router...');
 
   try {
     // First check for quick actions with Spotify data
-    const quickAction = await handleQuickActions(message, userId);
+    const quickAction = await handleQuickActions(message, userId, locationData);
     if (quickAction) {
       return quickAction;
     }
@@ -33,7 +34,11 @@ export async function processConversation(
   }
 }
 
-async function handleQuickActions(message: string, userId: string): Promise<{ 
+async function handleQuickActions(
+  message: string, 
+  userId: string, 
+  locationData?: LocationData
+): Promise<{ 
   response: string; 
   action?: string; 
   data?: any;

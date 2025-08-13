@@ -79,4 +79,20 @@ declare namespace Spotify {
     height: number;
     width: number;
   }
+
+  // Player constructor as a callable interface
+  interface PlayerConstructor {
+    new(options: {
+      name: string;
+      getOAuthToken: (cb: (token: string) => void) => void;
+      volume?: number;
+    }): Player;
+  }
+}
+
+// Global Spotify object
+declare global {
+  namespace Spotify {
+    const Player: Spotify.PlayerConstructor;
+  }
 }

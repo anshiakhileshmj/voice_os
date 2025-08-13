@@ -1,3 +1,4 @@
+
 import { supabase } from '@/integrations/supabase/client';
 import { commandSequencer } from './commandSequencer';
 import { subscriptionService } from './subscriptionService';
@@ -113,3 +114,18 @@ export class LLMService {
 }
 
 export const llmService = new LLMService();
+
+// Export the getAnswer function for backward compatibility
+export async function getAnswer(
+  message: string,
+  userId: string,
+  locationData?: any
+): Promise<string> {
+  try {
+    const result = await llmService.generateResponse(message, []);
+    return result.response;
+  } catch (error) {
+    console.error('Error in getAnswer:', error);
+    return "I'm having some technical difficulties right now. Could you try again?";
+  }
+}
