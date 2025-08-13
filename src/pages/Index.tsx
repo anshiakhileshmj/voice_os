@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 import { useSpeechRecognition } from '@/hooks/useSpeechRecognition';
+import { useSpotifyCallback } from '@/hooks/useSpotifyCallback';
 import { textToSpeechService } from '@/services/textToSpeechService';
 import { simplifiedActionRouter } from '@/services/simplifiedActionRouter';
 import { spotifyService } from '@/services/spotifyService';
@@ -46,6 +47,9 @@ const Index = () => {
 
   // Use the new speech recognition hook
   const speechRecognition = useSpeechRecognition();
+
+  // Handle Spotify OAuth callback
+  useSpotifyCallback();
 
   useEffect(() => {
     // Set up speech recognition result handler
@@ -111,43 +115,12 @@ const Index = () => {
   useEffect(() => {
     const checkSpotifyConnection = async () => {
       if (user) {
-        const urlParams = new URLSearchParams(window.location.search);
-        const code = urlParams.get('code');
-        const state = urlParams.get('state');
-        
-        if (code && state) {
-          try {
-            const success = await spotifyService.handleCallback(code, state);
-            if (success) {
-              setIsSpotifyConnected(true);
-              toast({
-                title: "Spotify Connected!",
-                description: "You can now control music with voice commands.",
-              });
-              window.history.replaceState({}, document.title, window.location.pathname);
-            } else {
-              toast({
-                title: "Connection Failed",
-                description: "Failed to connect to Spotify. Please try again.",
-                variant: "destructive"
-              });
-            }
-          } catch (error) {
-            console.error('Spotify callback error:', error);
-            toast({
-              title: "Connection Error",
-              description: "An error occurred while connecting to Spotify.",
-              variant: "destructive"
-            });
-          }
-        } else {
-          const connected = await spotifyService.isConnected();
-          setIsSpotifyConnected(connected);
-        }
+        const connected = await spotifyService.isConnected();
+        setIsSpotifyConnected(connected);
       }
     };
     checkSpotifyConnection();
-  }, [user, toast]);
+  }, [user]);
 
   const handleStreamingConversation = async (userInput: string) => {
     if (!userInput.trim()) return;
@@ -403,8 +376,6 @@ const Index = () => {
         <div className="fixed inset-0 flex items-center justify-center" style={{ top: '60%' }}>
           <SpotifyNote />
         </div>
-
-        {/* Document Upload section removed; upload now handled by FAB PDF button */}
 
         {/* Floating Action Button (FAB) and Menu */}
         <div style={{ position: 'fixed', right: 32, bottom: 32, zIndex: 100 }}>

@@ -1,3 +1,4 @@
+
 import { supabase } from '@/integrations/supabase/client';
 
 export interface SpotifyTokens {
@@ -21,8 +22,7 @@ export interface SpotifyTrack {
 
 export class SpotifyService {
   private static readonly SPOTIFY_AUTH_URL = 'https://accounts.spotify.com/authorize';
-  // Must match the Redirect URI configured in the Spotify Developer Dashboard
-  private static readonly REDIRECT_URI = 'https://voice-os.vercel.app/app';
+  private static readonly REDIRECT_URI = window.location.origin + '/app';
   private static readonly SCOPES = [
     'user-read-private',
     'user-read-email',
@@ -32,47 +32,101 @@ export class SpotifyService {
   ].join(' ');
 
   async initiateAuth(): Promise<void> {
-    const state = this.generateRandomString(16);
-    localStorage.setItem('spotify_auth_state', state);
+    console.log('Initiating Spotify auth...');
+    
+    // Generate a cryptographically secure random state
+    const state = this.generateSecureRandomString(128);
+    console.log('Generated state:', state);
+    
+    // Store state in localStorage with timestamp for cleanup
+    const stateData = {
+      state: state,
+      timestamp: Date.now(),
+      redirect_uri: SpotifyService.REDIRECT_URI
+    };
+    
+    localStorage.setItem('spotify_auth_state', JSON.stringify(stateData));
+    console.log('Stored state data:', stateData);
+
+    const clientId = await this.getClientId();
+    console.log('Using client ID:', clientId);
 
     const params = new URLSearchParams({
       response_type: 'code',
-      client_id: await this.getClientId(),
+      client_id: clientId,
       scope: SpotifyService.SCOPES,
       redirect_uri: SpotifyService.REDIRECT_URI,
       state: state,
+      show_dialog: 'true' // Force user to approve app each time for debugging
     });
 
-    window.location.href = `${SpotifyService.SPOTIFY_AUTH_URL}?${params}`;
+    const authUrl = `${SpotifyService.SPOTIFY_AUTH_URL}?${params}`;
+    console.log('Redirecting to:', authUrl);
+    
+    window.location.href = authUrl;
   }
 
   async handleCallback(code: string, state: string): Promise<boolean> {
-    const savedState = localStorage.getItem('spotify_auth_state');
-    if (state !== savedState) {
-      throw new Error('Invalid state parameter');
-    }
-
+    console.log('Handling callback with code:', code?.substring(0, 10) + '...', 'state:', state);
+    
     try {
+      // Retrieve and validate stored state
+      const storedStateJson = localStorage.getItem('spotify_auth_state');
+      
+      if (!storedStateJson) {
+        console.error('No stored state found in localStorage');
+        throw new Error('No stored authentication state found');
+      }
+
+      const stateData = JSON.parse(storedStateJson);
+      console.log('Retrieved state data:', stateData);
+
+      // Validate state parameter
+      if (state !== stateData.state) {
+        console.error('State mismatch - received:', state, 'expected:', stateData.state);
+        throw new Error('Invalid state parameter - possible CSRF attack');
+      }
+
+      // Check if state is not too old (10 minutes max)
+      if (Date.now() - stateData.timestamp > 10 * 60 * 1000) {
+        console.error('State expired');
+        throw new Error('Authentication state expired');
+      }
+
+      console.log('State validation successful, exchanging code for tokens...');
+
+      // Exchange code for tokens
       const response = await fetch('https://uasluhbtcpuigwkuslum.supabase.co/functions/v1/spotify-auth/token', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
         body: JSON.stringify({
           code,
           redirect_uri: SpotifyService.REDIRECT_URI,
         }),
       });
 
+      console.log('Token exchange response status:', response.status);
+
       if (!response.ok) {
-        throw new Error('Failed to exchange code for tokens');
+        const errorText = await response.text();
+        console.error('Token exchange failed:', errorText);
+        throw new Error(`Failed to exchange code for tokens: ${response.status} ${errorText}`);
       }
 
       const tokens: SpotifyTokens = await response.json();
+      console.log('Received tokens:', { ...tokens, access_token: tokens.access_token?.substring(0, 20) + '...' });
+      
       await this.saveTokens(tokens);
       localStorage.removeItem('spotify_auth_state');
       
+      console.log('Spotify authentication successful');
       return true;
     } catch (error) {
       console.error('Spotify callback error:', error);
+      localStorage.removeItem('spotify_auth_state'); // Clean up on error
       return false;
     }
   }
@@ -167,8 +221,9 @@ export class SpotifyService {
     const tokens = await this.getTokens();
     if (!tokens) return null;
 
-    // Check if token is expired
-    if (Date.now() >= tokens.expires_at) {
+    // Check if token is expired (with 1 minute buffer)
+    if (Date.now() >= (tokens.expires_at - 60000)) {
+      console.log('Token expired, refreshing...');
       const refreshedTokens = await this.refreshTokens(tokens.refresh_token);
       if (!refreshedTokens) return null;
       await this.saveTokens(refreshedTokens);
@@ -180,15 +235,21 @@ export class SpotifyService {
 
   private async refreshTokens(refreshToken: string): Promise<SpotifyTokens | null> {
     try {
+      console.log('Refreshing tokens...');
       const response = await fetch('https://uasluhbtcpuigwkuslum.supabase.co/functions/v1/spotify-auth/refresh', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ refresh_token: refreshToken }),
       });
 
-      if (!response.ok) return null;
+      if (!response.ok) {
+        console.error('Token refresh failed:', response.status);
+        return null;
+      }
 
-      return response.json();
+      const tokens = await response.json();
+      console.log('Tokens refreshed successfully');
+      return tokens;
     } catch (error) {
       console.error('Token refresh error:', error);
       return null;
@@ -199,7 +260,9 @@ export class SpotifyService {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error('User not authenticated');
 
+    // Store in localStorage for immediate access
     localStorage.setItem('spotify_tokens', JSON.stringify(tokens));
+    console.log('Tokens saved to localStorage');
   }
 
   private async getTokens(): Promise<SpotifyTokens | null> {
@@ -209,30 +272,32 @@ export class SpotifyService {
     try {
       return JSON.parse(tokensStr);
     } catch {
+      localStorage.removeItem('spotify_tokens'); // Clean up corrupted data
       return null;
     }
   }
 
   private async getClientId(): Promise<string> {
-    // Prefer Supabase Edge Function but fall back to env/constant to avoid "undefined" client_id
+    // Try to get client ID from Supabase Edge Function first
     try {
       const response = await fetch('https://uasluhbtcpuigwkuslum.supabase.co/functions/v1/spotify-auth/client-id');
       if (response.ok) {
         const data = await response.json();
         if (data?.client_id) return data.client_id as string;
       }
-    } catch {
-      // ignore and fall through to fallback
+    } catch (error) {
+      console.warn('Failed to get client ID from edge function:', error);
     }
 
+    // Fallback to environment variable or hardcoded value
     const envClientId = (import.meta as any)?.env?.VITE_SPOTIFY_CLIENT_ID as string | undefined;
     return envClientId || 'b9cb88208a414f018feac12ebd9821e3';
   }
 
-  private generateRandomString(length: number): string {
-    const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-    const values = crypto.getRandomValues(new Uint8Array(length));
-    return values.reduce((acc, x) => acc + possible[x % possible.length], '');
+  private generateSecureRandomString(length: number): string {
+    const array = new Uint8Array(length);
+    crypto.getRandomValues(array);
+    return Array.from(array, byte => byte.toString(16).padStart(2, '0')).join('');
   }
 }
 
