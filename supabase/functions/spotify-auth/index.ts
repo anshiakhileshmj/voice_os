@@ -1,3 +1,4 @@
+
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 
 const corsHeaders = {
@@ -25,6 +26,8 @@ serve(async (req) => {
       // Exchange authorization code for tokens
       const { code, redirect_uri } = await req.json()
 
+      console.log('Exchanging code for tokens...')
+
       const response = await fetch('https://accounts.spotify.com/api/token', {
         method: 'POST',
         headers: {
@@ -40,10 +43,12 @@ serve(async (req) => {
 
       if (!response.ok) {
         const error = await response.text()
+        console.error('Spotify token exchange failed:', error)
         throw new Error(`Spotify token exchange failed: ${error}`)
       }
 
       const tokens = await response.json()
+      console.log('Token exchange successful')
       
       return new Response(
         JSON.stringify({
@@ -61,6 +66,8 @@ serve(async (req) => {
       // Refresh access token
       const { refresh_token } = await req.json()
 
+      console.log('Refreshing tokens...')
+
       const response = await fetch('https://accounts.spotify.com/api/token', {
         method: 'POST',
         headers: {
@@ -74,10 +81,13 @@ serve(async (req) => {
       })
 
       if (!response.ok) {
+        const error = await response.text()
+        console.error('Token refresh failed:', error)
         throw new Error('Token refresh failed')
       }
 
       const tokens = await response.json()
+      console.log('Token refresh successful')
       
       return new Response(
         JSON.stringify({
@@ -93,6 +103,7 @@ serve(async (req) => {
 
     if (action === 'client-id') {
       // Return client ID for frontend
+      console.log('Returning client ID')
       return new Response(
         JSON.stringify({ client_id: SPOTIFY_CLIENT_ID }),
         {

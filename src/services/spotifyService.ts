@@ -1,4 +1,3 @@
-
 import { supabase } from '@/integrations/supabase/client';
 
 export interface SpotifyTokens {
@@ -57,7 +56,7 @@ export class SpotifyService {
       scope: SpotifyService.SCOPES,
       redirect_uri: SpotifyService.REDIRECT_URI,
       state: state,
-      show_dialog: 'true' // Force user to approve app each time for debugging
+      show_dialog: 'true'
     });
 
     const authUrl = `${SpotifyService.SPOTIFY_AUTH_URL}?${params}`;
@@ -95,28 +94,23 @@ export class SpotifyService {
 
       console.log('State validation successful, exchanging code for tokens...');
 
-      // Exchange code for tokens
-      const response = await fetch('https://uasluhbtcpuigwkuslum.supabase.co/functions/v1/spotify-auth/token', {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        },
-        body: JSON.stringify({
+      // Get current session to include auth header
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      // Use Supabase client to call edge function
+      const { data, error } = await supabase.functions.invoke('spotify-auth/token', {
+        body: {
           code,
           redirect_uri: SpotifyService.REDIRECT_URI,
-        }),
+        },
       });
 
-      console.log('Token exchange response status:', response.status);
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('Token exchange failed:', errorText);
-        throw new Error(`Failed to exchange code for tokens: ${response.status} ${errorText}`);
+      if (error) {
+        console.error('Edge function error:', error);
+        throw new Error(`Failed to exchange code for tokens: ${error.message}`);
       }
 
-      const tokens: SpotifyTokens = await response.json();
+      const tokens: SpotifyTokens = data;
       console.log('Received tokens:', { ...tokens, access_token: tokens.access_token?.substring(0, 20) + '...' });
       
       await this.saveTokens(tokens);
@@ -126,7 +120,7 @@ export class SpotifyService {
       return true;
     } catch (error) {
       console.error('Spotify callback error:', error);
-      localStorage.removeItem('spotify_auth_state'); // Clean up on error
+      localStorage.removeItem('spotify_auth_state');
       return false;
     }
   }
@@ -236,20 +230,19 @@ export class SpotifyService {
   private async refreshTokens(refreshToken: string): Promise<SpotifyTokens | null> {
     try {
       console.log('Refreshing tokens...');
-      const response = await fetch('https://uasluhbtcpuigwkuslum.supabase.co/functions/v1/spotify-auth/refresh', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ refresh_token: refreshToken }),
+      
+      // Use Supabase client to call edge function
+      const { data, error } = await supabase.functions.invoke('spotify-auth/refresh', {
+        body: { refresh_token: refreshToken },
       });
 
-      if (!response.ok) {
-        console.error('Token refresh failed:', response.status);
+      if (error) {
+        console.error('Token refresh failed:', error);
         return null;
       }
 
-      const tokens = await response.json();
       console.log('Tokens refreshed successfully');
-      return tokens;
+      return data;
     } catch (error) {
       console.error('Token refresh error:', error);
       return null;
@@ -272,26 +265,27 @@ export class SpotifyService {
     try {
       return JSON.parse(tokensStr);
     } catch {
-      localStorage.removeItem('spotify_tokens'); // Clean up corrupted data
+      localStorage.removeItem('spotify_tokens');
       return null;
     }
   }
 
   private async getClientId(): Promise<string> {
-    // Try to get client ID from Supabase Edge Function first
     try {
-      const response = await fetch('https://uasluhbtcpuigwkuslum.supabase.co/functions/v1/spotify-auth/client-id');
-      if (response.ok) {
-        const data = await response.json();
-        if (data?.client_id) return data.client_id as string;
+      // Use Supabase client to call edge function
+      const { data, error } = await supabase.functions.invoke('spotify-auth/client-id');
+      
+      if (error || !data?.client_id) {
+        console.warn('Failed to get client ID from edge function:', error);
+        // Fallback to hardcoded value
+        return 'b9cb88208a414f018feac12ebd9821e3';
       }
+      
+      return data.client_id;
     } catch (error) {
       console.warn('Failed to get client ID from edge function:', error);
+      return 'b9cb88208a414f018feac12ebd9821e3';
     }
-
-    // Fallback to environment variable or hardcoded value
-    const envClientId = (import.meta as any)?.env?.VITE_SPOTIFY_CLIENT_ID as string | undefined;
-    return envClientId || 'b9cb88208a414f018feac12ebd9821e3';
   }
 
   private generateSecureRandomString(length: number): string {

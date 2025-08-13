@@ -1,13 +1,22 @@
+
+# The default Supabase settings
 project_id = "uasluhbtcpuigwkuslum"
 
-[auth.external.spotify]
+[api]
 enabled = true
-client_id = ""
-secret = ""
-redirect_uri = ""
+port = 54321
+schemas = ["public", "graphql_public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
 
-[functions.get-location]
-verify_jwt = false
+[auth]
+enabled = true
+port = 54322
+site_url = "http://localhost:3000"
+additional_redirect_urls = ["https://localhost:3000"]
+jwt_expiry = 3600
+refresh_token_rotation_enabled = true
+security_update_password_require_reauthentication = true
 
-[functions.process-document]
+[functions.spotify-auth]
 verify_jwt = false
