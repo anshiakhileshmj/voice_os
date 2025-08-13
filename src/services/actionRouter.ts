@@ -317,28 +317,6 @@ Respond ONLY with valid JSON.`;
         };
       }
 
-      // Check if user has premium
-      const profile = await spotifyService.getUserProfile();
-      if (profile.product !== 'premium') {
-        return {
-          success: false,
-          message: "Spotify Premium is required to control playback. Please upgrade your account.",
-          requiresTTS: true
-        };
-      }
-
-      // Get active devices
-      const devices = await spotifyService.getDevices();
-      const activeDevice = devices.find(d => d.is_active);
-      
-      if (!activeDevice && devices.length === 0) {
-        return {
-          success: false,
-          message: "No Spotify devices found. Please open Spotify on a device first.",
-          requiresTTS: true
-        };
-      }
-
       // Search for track
       const query = song ? `${song} ${artist}` : artist;
       const track = await spotifyService.searchTrack(query);
@@ -351,8 +329,44 @@ Respond ONLY with valid JSON.`;
         };
       }
 
-      // Play track
-      await spotifyService.playTrack(track.uri, activeDevice?.id);
+      // Attempt to play track
+      const playResult = await spotifyService.playTrack(track.uri);
+      
+      if (!playResult.success) {
+        switch (playResult.error) {
+          case 'premium_required':
+            return {
+              success: false,
+              message: "Spotify Premium is required to control playback. Please upgrade your Spotify account to Premium.",
+              requiresTTS: true,
+              data: { showPremiumPopup: true }
+            };
+          case 'no_devices':
+            return {
+              success: false,
+              message: "No Spotify devices found. Please open Spotify on a device first (phone, computer, or web player).",
+              requiresTTS: true
+            };
+          case 'no_active_device':
+            return {
+              success: false,
+              message: "No active Spotify device found. Please start playing something on Spotify first, then try again.",
+              requiresTTS: true
+            };
+          case 'forbidden':
+            return {
+              success: false,
+              message: "I don't have permission to control your Spotify playback. Please check your Spotify settings.",
+              requiresTTS: true
+            };
+          default:
+            return {
+              success: false,
+              message: `Failed to play the song: ${playResult.error}. Please check your Spotify connection.`,
+              requiresTTS: true
+            };
+        }
+      }
       
       // Increment Spotify usage after successful play
       await subscriptionService.incrementUsage(user.id, 'spotify');

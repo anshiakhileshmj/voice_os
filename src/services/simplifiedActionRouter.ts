@@ -70,7 +70,7 @@ export class SimplifiedActionRouter {
     }
   }
 
-  private async handleQuickActions(userInput: string): Promise<{message: string, speak: boolean} | null> {
+  private async handleQuickActions(userInput: string): Promise<{message: string, speak: boolean, data?: any} | null> {
     const input = userInput.toLowerCase();
 
     // Spotify commands
@@ -79,12 +79,40 @@ export class SimplifiedActionRouter {
         // Extract song name from input and search/play
         const songQuery = userInput.replace(/play|song|music|spotify/gi, '').trim();
         const track = await spotifyService.searchTrack(songQuery);
-        if (track) {
-          await spotifyService.playTrack(track.uri);
-          return { message: `Playing ${track.name} by ${track.artist}`, speak: true };
-        } else {
+        
+        if (!track) {
           return { message: "I couldn't find that song. Could you try again?", speak: true };
         }
+
+        const playResult = await spotifyService.playTrack(track.uri);
+        
+        if (!playResult.success) {
+          switch (playResult.error) {
+            case 'premium_required':
+              return { 
+                message: "Spotify Premium is required to control playback. Please upgrade your Spotify account.", 
+                speak: true,
+                data: { showPremiumPopup: true }
+              };
+            case 'no_devices':
+              return { 
+                message: "No Spotify devices found. Please open Spotify on a device first.", 
+                speak: true 
+              };
+            case 'no_active_device':
+              return { 
+                message: "No active Spotify device found. Please start playing something on Spotify first.", 
+                speak: true 
+              };
+            default:
+              return { 
+                message: "I had trouble playing that song. Could you try again?", 
+                speak: true 
+              };
+          }
+        }
+
+        return { message: `Playing ${track.name} by ${track.artist}`, speak: true };
       } catch (error) {
         return { message: "I had trouble playing that song. Could you try again?", speak: true };
       }

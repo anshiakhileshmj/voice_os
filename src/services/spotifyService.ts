@@ -1,4 +1,3 @@
-
 import { supabase } from '@/integrations/supabase/client';
 
 export interface SpotifyTokens {
@@ -20,14 +19,22 @@ export interface SpotifyTrack {
   artist: string;
 }
 
+export interface SpotifyUserProfile {
+  id: string;
+  display_name: string;
+  email: string;
+  product: 'free' | 'premium';
+  country: string;
+}
+
 export class SpotifyService {
   private static readonly SPOTIFY_AUTH_URL = 'https://accounts.spotify.com/authorize';
   private static readonly REDIRECT_URI = window.location.origin + '/app';
   private static readonly SCOPES = [
     'user-read-private',
     'user-read-email',
-    'user-modify-playback-state',
     'user-read-playback-state',
+    'user-modify-playback-state',
     'streaming'
   ].join(' ');
 
@@ -141,7 +148,7 @@ export class SpotifyService {
     return tokens !== null;
   }
 
-  async getUserProfile(): Promise<any> {
+  async getUserProfile(): Promise<SpotifyUserProfile> {
     const accessToken = await this.getValidAccessToken();
     if (!accessToken) throw new Error('Not authenticated');
 
@@ -165,11 +172,35 @@ export class SpotifyService {
     });
 
     if (!response.ok) {
+      if (response.status === 403) {
+        throw new Error('Premium subscription required');
+      }
       throw new Error('Failed to get devices');
     }
 
     const data = await response.json();
     return data.devices || [];
+  }
+
+  async transferPlayback(deviceId: string): Promise<void> {
+    const accessToken = await this.getValidAccessToken();
+    if (!accessToken) throw new Error('Not authenticated');
+
+    const response = await fetch('https://api.spotify.com/v1/me/player', {
+      method: 'PUT',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        device_ids: [deviceId],
+        play: false
+      }),
+    });
+
+    if (!response.ok && response.status !== 204) {
+      throw new Error('Failed to transfer playback');
+    }
   }
 
   async searchTrack(query: string): Promise<SpotifyTrack | null> {
@@ -200,25 +231,73 @@ export class SpotifyService {
     };
   }
 
-  async playTrack(trackUri: string, deviceId?: string): Promise<void> {
-    const accessToken = await this.getValidAccessToken();
-    if (!accessToken) throw new Error('Not authenticated');
+  async playTrack(trackUri: string, deviceId?: string): Promise<{ success: boolean; error?: string }> {
+    try {
+      const accessToken = await this.getValidAccessToken();
+      if (!accessToken) {
+        return { success: false, error: 'Not authenticated' };
+      }
 
-    const body: any = { uris: [trackUri] };
-    if (deviceId) body.device_id = deviceId;
+      // Check if user has premium
+      const profile = await this.getUserProfile();
+      if (profile.product !== 'premium') {
+        return { success: false, error: 'premium_required' };
+      }
 
-    const response = await fetch('https://api.spotify.com/v1/me/player/play', {
-      method: 'PUT',
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(body),
-    });
+      // Get devices
+      const devices = await this.getDevices();
+      
+      if (devices.length === 0) {
+        return { success: false, error: 'no_devices' };
+      }
 
-    if (!response.ok) {
+      // Find active device or use the first available device
+      let targetDevice = devices.find(d => d.is_active);
+      
+      if (!targetDevice) {
+        targetDevice = devices[0];
+        // Transfer playback to the first available device
+        await this.transferPlayback(targetDevice.id);
+        // Wait a bit for the transfer to complete
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+
+      const body: any = { uris: [trackUri] };
+      if (deviceId || targetDevice) {
+        body.device_id = deviceId || targetDevice.id;
+      }
+
+      const response = await fetch('https://api.spotify.com/v1/me/player/play', {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body),
+      });
+
+      if (response.ok || response.status === 204) {
+        return { success: true };
+      }
+
+      if (response.status === 403) {
+        const errorData = await response.json().catch(() => ({}));
+        if (errorData.error?.reason === 'PREMIUM_REQUIRED') {
+          return { success: false, error: 'premium_required' };
+        }
+        return { success: false, error: 'forbidden' };
+      }
+
+      if (response.status === 404) {
+        return { success: false, error: 'no_active_device' };
+      }
+
       const error = await response.json().catch(() => ({}));
-      throw new Error(error.error?.message || 'Failed to play track');
+      return { success: false, error: error.error?.message || 'Failed to play track' };
+
+    } catch (error) {
+      console.error('Play track error:', error);
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
     }
   }
 
