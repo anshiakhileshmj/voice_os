@@ -1,3 +1,4 @@
+
 import { supabase } from '@/integrations/supabase/client';
 
 export interface SpotifyTokens {
@@ -33,9 +34,12 @@ export class SpotifyService {
   async initiateAuth(): Promise<void> {
     console.log('Initiating Spotify auth...');
     
+    // Clear any existing auth state first
+    localStorage.removeItem('spotify_auth_state');
+    
     // Generate a cryptographically secure random state
     const state = this.generateSecureRandomString(128);
-    console.log('Generated state:', state);
+    console.log('Generated new state for auth:', state.substring(0, 20) + '...');
     
     // Store state in localStorage with timestamp for cleanup
     const stateData = {
@@ -45,7 +49,7 @@ export class SpotifyService {
     };
     
     localStorage.setItem('spotify_auth_state', JSON.stringify(stateData));
-    console.log('Stored state data:', stateData);
+    console.log('Stored state data in localStorage');
 
     const clientId = await this.getClientId();
     console.log('Using client ID:', clientId);
@@ -60,13 +64,16 @@ export class SpotifyService {
     });
 
     const authUrl = `${SpotifyService.SPOTIFY_AUTH_URL}?${params}`;
-    console.log('Redirecting to:', authUrl);
+    console.log('Redirecting to Spotify with state:', state.substring(0, 20) + '...');
     
-    window.location.href = authUrl;
+    // Add a small delay to ensure localStorage is written
+    setTimeout(() => {
+      window.location.href = authUrl;
+    }, 100);
   }
 
   async handleCallback(code: string, state: string): Promise<boolean> {
-    console.log('Handling callback with code:', code?.substring(0, 10) + '...', 'state:', state);
+    console.log('Handling callback with code:', code?.substring(0, 10) + '...', 'state:', state.substring(0, 20) + '...');
     
     try {
       // Retrieve and validate stored state
@@ -74,29 +81,30 @@ export class SpotifyService {
       
       if (!storedStateJson) {
         console.error('No stored state found in localStorage');
-        throw new Error('No stored authentication state found');
+        throw new Error('No stored authentication state found. Please try connecting to Spotify again.');
       }
 
       const stateData = JSON.parse(storedStateJson);
-      console.log('Retrieved state data:', stateData);
+      console.log('Retrieved stored state:', stateData.state.substring(0, 20) + '...');
+      console.log('Received state from Spotify:', state.substring(0, 20) + '...');
+      console.log('States match:', state === stateData.state);
 
       // Validate state parameter
       if (state !== stateData.state) {
-        console.error('State mismatch - received:', state, 'expected:', stateData.state);
-        throw new Error('Invalid state parameter - possible CSRF attack');
+        console.error('State mismatch - received:', state.substring(0, 20) + '...', 'expected:', stateData.state.substring(0, 20) + '...');
+        localStorage.removeItem('spotify_auth_state');
+        throw new Error('Authentication state mismatch. Please try connecting to Spotify again.');
       }
 
       // Check if state is not too old (10 minutes max)
       if (Date.now() - stateData.timestamp > 10 * 60 * 1000) {
         console.error('State expired');
-        throw new Error('Authentication state expired');
+        localStorage.removeItem('spotify_auth_state');
+        throw new Error('Authentication session expired. Please try connecting to Spotify again.');
       }
 
       console.log('State validation successful, exchanging code for tokens...');
 
-      // Get current session to include auth header
-      const { data: { session } } = await supabase.auth.getSession();
-      
       // Use Supabase client to call edge function
       const { data, error } = await supabase.functions.invoke('spotify-auth/token', {
         body: {
@@ -111,15 +119,18 @@ export class SpotifyService {
       }
 
       const tokens: SpotifyTokens = data;
-      console.log('Received tokens:', { ...tokens, access_token: tokens.access_token?.substring(0, 20) + '...' });
+      console.log('Received tokens successfully');
       
       await this.saveTokens(tokens);
+      
+      // Clean up stored state
       localStorage.removeItem('spotify_auth_state');
       
       console.log('Spotify authentication successful');
       return true;
     } catch (error) {
       console.error('Spotify callback error:', error);
+      // Always clean up state on error
       localStorage.removeItem('spotify_auth_state');
       return false;
     }

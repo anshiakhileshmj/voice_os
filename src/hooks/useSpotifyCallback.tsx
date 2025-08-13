@@ -43,16 +43,17 @@ export const useSpotifyCallback = () => {
           } else {
             toast({
               title: "Connection Failed",
-              description: "Failed to connect to Spotify. Please try again.",
+              description: "Authentication state mismatch. Please try connecting to Spotify again.",
               variant: "destructive"
             });
             console.error('Spotify authentication failed');
           }
         } catch (error) {
           console.error('Spotify callback processing error:', error);
+          const errorMessage = error instanceof Error ? error.message : "An error occurred while connecting to Spotify.";
           toast({
             title: "Connection Error",
-            description: error instanceof Error ? error.message : "An error occurred while connecting to Spotify.",
+            description: errorMessage,
             variant: "destructive"
           });
         }
