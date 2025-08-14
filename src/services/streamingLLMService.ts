@@ -1,3 +1,4 @@
+
 import { supabase } from '@/integrations/supabase/client';
 
 export interface StreamingMessage {
@@ -61,7 +62,7 @@ class StreamingLLMService {
           message: userMessage.trim(),
           conversationHistory: this.conversationHistory,
           useOpenRouter: true,
-          model: 'meta-llama/llama-3.1-8b-instruct:free'
+          model: 'meta-llama/llama-3.1-8b-instruct' // Remove :free suffix
         }),
         signal: this.abortController.signal,
       });

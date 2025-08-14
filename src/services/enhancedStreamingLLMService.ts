@@ -68,7 +68,7 @@ class EnhancedStreamingLLMService {
           message: userMessage.trim(),
           conversationHistory: messages,
           useOpenRouter: true,
-          model: 'meta-llama/llama-3.1-8b-instruct:free'
+          model: 'meta-llama/llama-3.1-8b-instruct' // Remove :free suffix
         }),
         signal: this.abortController.signal,
       });
