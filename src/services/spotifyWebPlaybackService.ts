@@ -1,5 +1,6 @@
 
 import { spotifyService } from './spotifyService';
+import type { Spotify } from '@/types/spotify';
 
 export class SpotifyWebPlaybackService {
   private player: Spotify.Player | null = null;

@@ -84,4 +84,5 @@ declare namespace Spotify {
   }
 }
 
-export {};
+// Export the namespace so it can be used in other files
+export { Spotify };
