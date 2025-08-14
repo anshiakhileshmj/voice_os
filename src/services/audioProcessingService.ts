@@ -1,4 +1,3 @@
-
 export class AudioProcessingService {
   private audioContext: AudioContext | null = null;
   private mediaStream: MediaStream | null = null;
@@ -28,8 +27,7 @@ export class AudioProcessingService {
           channelCount: 1,
           echoCancellation: true,
           noiseSuppression: true,
-          autoGainControl: true,
-          suppressLocalAudioPlayback: true
+          autoGainControl: true
         }
       });
 
