@@ -1,4 +1,3 @@
-
 import { supabase } from '@/integrations/supabase/client';
 
 export interface StreamingMessage {
@@ -57,8 +56,8 @@ export class StreamingLLMService {
         body: JSON.stringify({
           message: userMessage.trim(),
           conversationHistory: messages,
-          useOpenRouter: true, // Flag to use OpenRouter instead
-          model: 'meta-llama/llama-3.2-3b-instruct:free' // Fast, free model with good reasoning
+          useOpenRouter: true,
+          model: 'meta-llama/llama-3.2-3b-instruct:free'
         }),
         signal: this.abortController.signal,
       });
@@ -75,17 +74,22 @@ export class StreamingLLMService {
 
       const decoder = new TextDecoder();
       let fullResponse = '';
+      let buffer = '';
 
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
 
         const chunk = decoder.decode(value, { stream: true });
-        const lines = chunk.split('\n');
+        buffer += chunk;
+        const lines = buffer.split('\n');
+        
+        // Keep the last incomplete line in the buffer
+        buffer = lines.pop() || '';
 
         for (const line of lines) {
           if (line.startsWith('data: ')) {
-            const data = line.slice(6);
+            const data = line.slice(6).trim();
             if (data === '[DONE]') continue;
             
             try {
@@ -96,8 +100,10 @@ export class StreamingLLMService {
                 callbacks.onChunk(content);
               }
             } catch (e) {
-              // Skip malformed JSON
-              console.warn('Skipped malformed chunk:', data.substring(0, 50));
+              // More robust error handling for malformed chunks
+              if (data.length > 10) { // Only log substantial malformed chunks
+                console.warn('Skipped malformed chunk:', data.substring(0, 50) + (data.length > 50 ? '...' : ''));
+              }
             }
           }
         }

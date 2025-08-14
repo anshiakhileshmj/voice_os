@@ -1,3 +1,4 @@
+
 import { streamingTTSService } from './streamingTTSService';
 import { languageAwareLLMService } from './languageAwareLLMService';
 import { streamingLLMService } from './streamingLLMService';
@@ -146,8 +147,12 @@ export class SimplifiedActionRouter {
   private async handleQuickActions(userInput: string): Promise<{message: string, speak: boolean, data?: any} | null> {
     const input = userInput.toLowerCase();
 
-    // Handle disconnect Spotify
-    if (input.includes('disconnect spotify') || input.includes('unlink spotify') || input.includes('remove spotify')) {
+    // Handle disconnect Spotify - improved pattern matching
+    if (input.includes('disconnect spotify') || 
+        input.includes('unlink spotify') || 
+        input.includes('remove spotify') ||
+        input.includes('disconnect my spotify') ||
+        (input.includes('disconnect') && input.includes('spotify'))) {
       try {
         const isConnected = await spotifyService.isConnected();
         if (!isConnected) {
@@ -155,8 +160,9 @@ export class SimplifiedActionRouter {
         }
 
         await spotifyService.disconnect();
-        return { message: "I've disconnected your Spotify account. You can reconnect anytime by clicking the Spotify button.", speak: true };
+        return { message: "I've successfully disconnected your Spotify account. You can reconnect anytime by clicking the Spotify button.", speak: true };
       } catch (error) {
+        console.error('Disconnect error:', error);
         return { message: "I had trouble disconnecting your Spotify account. Please try again.", speak: true };
       }
     }
