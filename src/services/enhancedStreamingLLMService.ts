@@ -68,7 +68,7 @@ class EnhancedStreamingLLMService {
           message: userMessage.trim(),
           conversationHistory: messages,
           useOpenRouter: true,
-          model: 'meta-llama/llama-3.1-8b-instruct' // Remove :free suffix
+          model: 'google/gemini-2.0-flash-001' // Switch to Gemini
         }),
         signal: this.abortController.signal,
       });
@@ -185,6 +185,7 @@ Keep responses natural and conversational for voice interaction.
 🗣️ VOICE CHAT: Maintain natural conversation flow with context awareness
 
 Guidelines:
+- Process multiple user commands intelligently when they come in sequence
 - Remember previous parts of our conversation
 - Build upon context from earlier messages
 - Be concise but informative for voice interaction

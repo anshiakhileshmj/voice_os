@@ -13,18 +13,18 @@ serve(async (req) => {
   }
 
   try {
-    const { message, conversationHistory = [], useOpenRouter = false, model = 'meta-llama/llama-3.1-8b-instruct' } = await req.json();
+    const { message, conversationHistory = [], useOpenRouter = false, model = 'google/gemini-2.0-flash-001' } = await req.json();
 
     if (!message?.trim()) {
       throw new Error('Message is required');
     }
 
     let apiUrl: string;
-    let apiKey: string;
+    let apiKey: string;   
     let requestBody: any;
 
     if (useOpenRouter) {
-      // Use OpenRouter with updated working model
+      // Use OpenRouter with Gemini model
       apiUrl = 'https://openrouter.ai/api/v1/chat/completions';
       apiKey = Deno.env.get('OPENROUTER_API_KEY');
       
@@ -32,8 +32,8 @@ serve(async (req) => {
         throw new Error('OpenRouter API key not configured');
       }
 
-      // Use a working OpenRouter model - removing the :free suffix which is causing 404
-      const workingModel = model.includes(':free') ? model.replace(':free', '') : 'meta-llama/llama-3.1-8b-instruct';
+      // Use Google Gemini model
+      const workingModel = model || 'google/gemini-2.0-flash-001';
 
       requestBody = {
         model: workingModel,
@@ -60,7 +60,7 @@ serve(async (req) => {
       };
     }
 
-    console.log(`Making request to ${useOpenRouter ? 'OpenRouter' : 'Together AI'} with model: ${requestBody.model}`);
+    console.log(`Making request to ${useOpenRouter ? 'OpenRouter (Gemini)' : 'Together AI'} with model: ${requestBody.model}`);
 
     const response = await fetch(apiUrl, {
       method: 'POST',
@@ -77,11 +77,11 @@ serve(async (req) => {
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error(`${useOpenRouter ? 'OpenRouter' : 'Together AI'} API Error:`, response.status, errorText);
+      console.error(`${useOpenRouter ? 'OpenRouter (Gemini)' : 'Together AI'} API Error:`, response.status, errorText);
       
       // If OpenRouter fails, automatically try Together AI as fallback
       if (useOpenRouter) {
-        console.log('OpenRouter failed, falling back to Together AI');
+        console.log('OpenRouter (Gemini) failed, falling back to Together AI');
         const togetherApiKey = Deno.env.get('TOGETHER_AI_API_KEY');
         
         if (togetherApiKey) {
