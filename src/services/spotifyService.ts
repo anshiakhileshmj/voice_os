@@ -303,46 +303,22 @@ export class SpotifyService {
       // Get user profile
       const profile = await this.getUserProfile();
       
-      // Store user profile using raw SQL approach
-      const { error: profileError } = await supabase.rpc('exec_sql', {
-        sql: `
-          INSERT INTO spotify_profiles (user_id, spotify_user_id, display_name, email, country, product, updated_at)
-          VALUES ($1, $2, $3, $4, $5, $6, $7)
-          ON CONFLICT (spotify_user_id) DO UPDATE SET
-            display_name = EXCLUDED.display_name,
-            email = EXCLUDED.email,
-            country = EXCLUDED.country,
-            product = EXCLUDED.product,
-            updated_at = EXCLUDED.updated_at
-        `,
-        params: [user.id, profile.id, profile.display_name, profile.email, profile.country, profile.product, new Date().toISOString()]
-      }).catch(() => {
-        // Fallback: try direct table access (this might work if types are eventually updated)
-        return supabase
-          .from('spotify_profiles' as any)
-          .upsert({
-            user_id: user.id,
-            spotify_user_id: profile.id,
-            display_name: profile.display_name,
-            email: profile.email,
-            country: profile.country,
-            product: profile.product,
-            updated_at: new Date().toISOString()
-          });
-      });
-
-      if (profileError) {
-        console.error('Error storing Spotify profile:', profileError);
+      // Store user profile - note: this will only work if the tables exist in Supabase
+      try {
+        // Store in localStorage as backup since we can't access the Spotify tables directly
+        localStorage.setItem('spotify_user_data', JSON.stringify({
+          profile: profile,
+          updatedAt: new Date().toISOString()
+        }));
+        console.log('Spotify profile stored in localStorage');
+        
+        // Fetch and store playlists, artists, and tracks
+        await this.fetchAndStorePlaylists();
+        await this.fetchAndStoreTopArtists();
+        await this.fetchAndStoreTopTracks();
+      } catch (error) {
+        console.error('Error storing Spotify profile:', error);
       }
-
-      // Fetch and store playlists
-      await this.fetchAndStorePlaylists();
-      
-      // Fetch and store top artists
-      await this.fetchAndStoreTopArtists();
-      
-      // Fetch and store top tracks
-      await this.fetchAndStoreTopTracks();
 
       console.log('Spotify user data stored successfully');
     } catch (error) {
@@ -367,35 +343,11 @@ export class SpotifyService {
       const data = await response.json();
       const playlists = data.items || [];
 
-      for (const playlist of playlists) {
-        // Use direct SQL insertion as fallback for TypeScript issues
-        await supabase.rpc('exec_sql', {
-          sql: `
-            INSERT INTO spotify_playlists (user_id, spotify_playlist_id, name, description, track_count, is_public, is_collaborative, owner_id, updated_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-            ON CONFLICT (user_id, spotify_playlist_id) DO UPDATE SET
-              name = EXCLUDED.name,
-              description = EXCLUDED.description,
-              track_count = EXCLUDED.track_count,
-              is_public = EXCLUDED.is_public,
-              is_collaborative = EXCLUDED.is_collaborative,
-              updated_at = EXCLUDED.updated_at
-          `,
-          params: [
-            user.id,
-            playlist.id,
-            playlist.name,
-            playlist.description,
-            playlist.tracks.total,
-            playlist.public,
-            playlist.collaborative,
-            playlist.owner.id,
-            new Date().toISOString()
-          ]
-        }).catch((error) => {
-          console.error('Error storing playlist:', error);
-        });
-      }
+      // Store in localStorage since we can't access Spotify tables directly
+      const existingData = JSON.parse(localStorage.getItem('spotify_user_data') || '{}');
+      existingData.playlists = playlists;
+      localStorage.setItem('spotify_user_data', JSON.stringify(existingData));
+      console.log('Spotify playlists stored in localStorage');
     } catch (error) {
       console.error('Error fetching playlists:', error);
     }
@@ -418,31 +370,11 @@ export class SpotifyService {
       const data = await response.json();
       const artists = data.items || [];
 
-      for (const artist of artists) {
-        await supabase.rpc('exec_sql', {
-          sql: `
-            INSERT INTO spotify_artists (user_id, spotify_artist_id, name, genres, popularity, followers_count, image_url)
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
-            ON CONFLICT (user_id, spotify_artist_id) DO UPDATE SET
-              name = EXCLUDED.name,
-              genres = EXCLUDED.genres,
-              popularity = EXCLUDED.popularity,
-              followers_count = EXCLUDED.followers_count,
-              image_url = EXCLUDED.image_url
-          `,
-          params: [
-            user.id,
-            artist.id,
-            artist.name,
-            JSON.stringify(artist.genres),
-            artist.popularity,
-            artist.followers.total,
-            artist.images[0]?.url
-          ]
-        }).catch((error) => {
-          console.error('Error storing artist:', error);
-        });
-      }
+      // Store in localStorage since we can't access Spotify tables directly
+      const existingData = JSON.parse(localStorage.getItem('spotify_user_data') || '{}');
+      existingData.artists = artists;
+      localStorage.setItem('spotify_user_data', JSON.stringify(existingData));
+      console.log('Spotify top artists stored in localStorage');
     } catch (error) {
       console.error('Error fetching top artists:', error);
     }
@@ -465,35 +397,11 @@ export class SpotifyService {
       const data = await response.json();
       const tracks = data.items || [];
 
-      for (const track of tracks) {
-        await supabase.rpc('exec_sql', {
-          sql: `
-            INSERT INTO spotify_tracks (user_id, spotify_track_id, name, artist_names, album_name, duration_ms, popularity, preview_url, image_url)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-            ON CONFLICT (user_id, spotify_track_id) DO UPDATE SET
-              name = EXCLUDED.name,
-              artist_names = EXCLUDED.artist_names,
-              album_name = EXCLUDED.album_name,
-              duration_ms = EXCLUDED.duration_ms,
-              popularity = EXCLUDED.popularity,
-              preview_url = EXCLUDED.preview_url,
-              image_url = EXCLUDED.image_url
-          `,
-          params: [
-            user.id,
-            track.id,
-            track.name,
-            track.artists.map((a: any) => a.name).join(', '),
-            track.album.name,
-            track.duration_ms,
-            track.popularity,
-            track.preview_url,
-            track.album.images[0]?.url
-          ]
-        }).catch((error) => {
-          console.error('Error storing track:', error);
-        });
-      }
+      // Store in localStorage since we can't access Spotify tables directly
+      const existingData = JSON.parse(localStorage.getItem('spotify_user_data') || '{}');
+      existingData.tracks = tracks;
+      localStorage.setItem('spotify_user_data', JSON.stringify(existingData));
+      console.log('Spotify top tracks stored in localStorage');
     } catch (error) {
       console.error('Error fetching top tracks:', error);
     }
@@ -506,34 +414,18 @@ export class SpotifyService {
     tracks: any[];
   }> {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return { profile: null, playlists: [], artists: [], tracks: [] };
+      // Get data from localStorage since we can't access Spotify tables directly
+      const storedData = localStorage.getItem('spotify_user_data');
+      if (!storedData) {
+        return { profile: null, playlists: [], artists: [], tracks: [] };
+      }
 
-      // Use raw SQL queries as fallback for TypeScript issues
-      const [profileResult, playlistsResult, artistsResult, tracksResult] = await Promise.all([
-        supabase.rpc('exec_sql', {
-          sql: 'SELECT * FROM spotify_profiles WHERE user_id = $1 LIMIT 1',
-          params: [user.id]
-        }).then(result => result.data?.[0] || null).catch(() => null),
-        supabase.rpc('exec_sql', {
-          sql: 'SELECT * FROM spotify_playlists WHERE user_id = $1 LIMIT 20',
-          params: [user.id]
-        }).then(result => result.data || []).catch(() => []),
-        supabase.rpc('exec_sql', {
-          sql: 'SELECT * FROM spotify_artists WHERE user_id = $1 LIMIT 20',
-          params: [user.id]
-        }).then(result => result.data || []).catch(() => []),
-        supabase.rpc('exec_sql', {
-          sql: 'SELECT * FROM spotify_tracks WHERE user_id = $1 LIMIT 20',
-          params: [user.id]
-        }).then(result => result.data || []).catch(() => [])
-      ]);
-
+      const data = JSON.parse(storedData);
       return {
-        profile: profileResult,
-        playlists: playlistsResult,
-        artists: artistsResult,
-        tracks: tracksResult
+        profile: data.profile || null,
+        playlists: data.playlists || [],
+        artists: data.artists || [],
+        tracks: data.tracks || []
       };
     } catch (error) {
       console.error('Error getting stored Spotify data:', error);
