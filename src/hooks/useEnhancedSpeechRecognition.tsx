@@ -33,7 +33,6 @@ export const useEnhancedSpeechRecognition = (): EnhancedSpeechRecognitionHook =>
   const speechEndCallbackRef = useRef<(() => void) | null>(null);
   
   const isActiveRef = useRef(false);
-  const silenceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const restartTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastPartialTranscriptRef = useRef('');
   const speechStartedRef = useRef(false);
@@ -42,10 +41,6 @@ export const useEnhancedSpeechRecognition = (): EnhancedSpeechRecognitionHook =>
   const { toast } = useToast();
 
   const clearTimeouts = useCallback(() => {
-    if (silenceTimeoutRef.current) {
-      clearTimeout(silenceTimeoutRef.current);
-      silenceTimeoutRef.current = null;
-    }
     if (restartTimeoutRef.current) {
       clearTimeout(restartTimeoutRef.current);
       restartTimeoutRef.current = null;
@@ -93,7 +88,6 @@ export const useEnhancedSpeechRecognition = (): EnhancedSpeechRecognitionHook =>
     recognition.interimResults = true;
     recognition.lang = 'en-US';
 
-    // Use addEventListener instead of direct property assignment for better compatibility
     recognition.addEventListener('start', () => {
       console.log('Enhanced STT: Recognition started with context awareness');
       setIsRecording(true);
@@ -162,7 +156,8 @@ export const useEnhancedSpeechRecognition = (): EnhancedSpeechRecognitionHook =>
       // Handle different error types gracefully
       switch (event.error) {
         case 'no-speech':
-          // Don't restart immediately for no-speech errors
+          // Continue listening - don't stop on no speech
+          console.log('No speech detected, continuing to listen...');
           break;
         case 'aborted':
           // Only restart if we're still supposed to be active
@@ -175,7 +170,7 @@ export const useEnhancedSpeechRecognition = (): EnhancedSpeechRecognitionHook =>
                   console.error('Enhanced STT: Restart failed:', error);
                 }
               }
-            }, 1000);
+            }, 500);
           }
           break;
         case 'not-allowed':
@@ -187,28 +182,45 @@ export const useEnhancedSpeechRecognition = (): EnhancedSpeechRecognitionHook =>
           isActiveRef.current = false;
           setIsRecording(false);
           break;
+        case 'network':
+          console.warn('Network error in speech recognition, continuing...');
+          break;
         default:
           console.warn('Enhanced STT: Unhandled error:', event.error);
       }
     });
 
     recognition.addEventListener('end', () => {
-      console.log('Enhanced STT: Recognition ended');
-      setIsRecording(false);
+      console.log('Enhanced STT: Recognition ended - attempting restart');
       
-      // Auto-restart if still active
+      // Always try to restart if still active (continuous listening)
       if (isActiveRef.current) {
         restartTimeoutRef.current = setTimeout(() => {
           if (isActiveRef.current) {
             try {
               if (recognitionRef.current) {
+                console.log('Enhanced STT: Restarting recognition for continuous listening');
                 recognitionRef.current.start();
               }
             } catch (error) {
               console.error('Enhanced STT: Auto-restart failed:', error);
+              // Try again after a longer delay
+              if (isActiveRef.current) {
+                restartTimeoutRef.current = setTimeout(() => {
+                  if (isActiveRef.current && recognitionRef.current) {
+                    try {
+                      recognitionRef.current.start();
+                    } catch (retryError) {
+                      console.error('Enhanced STT: Retry restart failed:', retryError);
+                    }
+                  }
+                }, 2000);
+              }
             }
           }
-        }, 500);
+        }, 100); // Immediate restart
+      } else {
+        setIsRecording(false);
       }
     });
 
@@ -275,9 +287,10 @@ export const useEnhancedSpeechRecognition = (): EnhancedSpeechRecognitionHook =>
     if (recognitionRef.current) {
       try {
         recognitionRef.current.start();
+        console.log('Enhanced STT: Started continuous recognition - will not auto-stop');
         toast({
           title: "Enhanced Voice Recognition Started",
-          description: "Context-aware listening with audio processing active."
+          description: "Continuous listening active - click 'End Call' to stop."
         });
       } catch (error) {
         console.error('Enhanced STT: Start failed:', error);
@@ -287,7 +300,7 @@ export const useEnhancedSpeechRecognition = (): EnhancedSpeechRecognitionHook =>
   }, [isSupported, toast, initializeRecognition]);
 
   const stopContinuousRecognition = useCallback(() => {
-    console.log('Enhanced STT: Stopping continuous recognition with cleanup');
+    console.log('Enhanced STT: Explicitly stopping continuous recognition');
     isActiveRef.current = false;
     speechStartedRef.current = false;
     
@@ -308,14 +321,28 @@ export const useEnhancedSpeechRecognition = (): EnhancedSpeechRecognitionHook =>
     setPartialTranscript('');
     setCurrentTranscript('');
     lastPartialTranscriptRef.current = '';
-  }, [clearTimeouts]);
+    
+    toast({
+      title: "Voice Recognition Stopped",
+      description: "Continuous listening has ended."
+    });
+  }, [clearTimeouts, toast]);
 
   // Cleanup on unmount
   useEffect(() => {
     return () => {
-      stopContinuousRecognition();
+      isActiveRef.current = false;
+      clearTimeouts();
+      audioProcessingService.cleanup();
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.stop();
+        } catch (error) {
+          console.error('Cleanup error:', error);
+        }
+      }
     };
-  }, [stopContinuousRecognition]);
+  }, [clearTimeouts]);
 
   const onPartialResult = useCallback((callback: (transcript: string) => void) => {
     partialCallbackRef.current = callback;

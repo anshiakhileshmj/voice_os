@@ -1,4 +1,3 @@
-
 import { supabase } from '@/integrations/supabase/client';
 import { conversationContextService } from './conversationContextService';
 
@@ -18,6 +17,7 @@ export interface EnhancedStreamingResponse {
 class EnhancedStreamingLLMService {
   private abortController: AbortController | null = null;
   private streamBuffer: string = '';
+  private partialChunk: string = ''; // Buffer for incomplete JSON chunks
   private readonly CONTEXT_CHUNK_SIZE = 50; // Send context every 50 characters
 
   async generateContextAwareResponse(
@@ -85,23 +85,33 @@ class EnhancedStreamingLLMService {
       const decoder = new TextDecoder();
       let fullResponse = '';
       this.streamBuffer = '';
+      this.partialChunk = ''; // Reset partial chunk buffer
 
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
 
         const chunk = decoder.decode(value, { stream: true });
-        const lines = chunk.split('\n');
+        // Add chunk to any existing partial data
+        const completeChunk = this.partialChunk + chunk;
+        const lines = completeChunk.split('\n');
+        
+        // Keep the last line as partial if it doesn't end with newline
+        this.partialChunk = completeChunk.endsWith('\n') ? '' : lines.pop() || '';
 
         for (const line of lines) {
           if (line.startsWith('data: ')) {
-            const data = line.slice(6);
+            const data = line.slice(6).trim();
             if (data === '[DONE]') continue;
+            if (!data) continue; // Skip empty data lines
             
             try {
               const parsed = JSON.parse(data);
-              if (parsed.choices?.[0]?.delta?.content) {
-                const content = parsed.choices[0].delta.content;
+              // Handle both OpenAI and Together AI response formats
+              const content = parsed.choices?.[0]?.delta?.content || 
+                             parsed.choices?.[0]?.text || '';
+              
+              if (content) {
                 fullResponse += content;
                 this.streamBuffer += content;
                 
@@ -115,8 +125,30 @@ class EnhancedStreamingLLMService {
                 }
               }
             } catch (e) {
-              console.warn('Skipped malformed chunk:', data);
+              // Only log if it's not just a partial chunk
+              if (data.length > 10) {
+                console.warn('Skipped malformed chunk (will retry):', data.substring(0, 100) + '...');
+              }
             }
+          }
+        }
+      }
+
+      // Process any remaining partial chunk
+      if (this.partialChunk.startsWith('data: ')) {
+        const data = this.partialChunk.slice(6).trim();
+        if (data && data !== '[DONE]') {
+          try {
+            const parsed = JSON.parse(data);
+            const content = parsed.choices?.[0]?.delta?.content || 
+                           parsed.choices?.[0]?.text || '';
+            if (content) {
+              fullResponse += content;
+              this.streamBuffer += content;
+              callbacks.onChunk(content);
+            }
+          } catch (e) {
+            console.warn('Final chunk parse failed:', data);
           }
         }
       }
@@ -193,6 +225,7 @@ Guidelines:
       this.abortController.abort();
       this.abortController = null;
     }
+    this.partialChunk = ''; // Clear partial chunk buffer
   }
 
   getConversationStats() {
