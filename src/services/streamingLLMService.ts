@@ -1,3 +1,4 @@
+
 import { supabase } from '@/integrations/supabase/client';
 
 export interface StreamingMessage {
@@ -14,6 +15,8 @@ export interface StreamingResponse {
 export class StreamingLLMService {
   private conversationHistory: StreamingMessage[] = [];
   private abortController: AbortController | null = null;
+  private lastRequestTime = 0;
+  private minRequestInterval = 2000; // 2 seconds between requests
 
   async generateStreamingResponse(
     userMessage: string,
@@ -23,6 +26,15 @@ export class StreamingLLMService {
       callbacks.onError(new Error('Message cannot be empty.'));
       return;
     }
+
+    // Rate limiting - ensure minimum interval between requests
+    const now = Date.now();
+    const timeSinceLastRequest = now - this.lastRequestTime;
+    if (timeSinceLastRequest < this.minRequestInterval) {
+      const delay = this.minRequestInterval - timeSinceLastRequest;
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+    this.lastRequestTime = Date.now();
 
     // Add system context for better time and location awareness
     const systemContext = this.getSystemContext();
@@ -46,6 +58,31 @@ export class StreamingLLMService {
         throw new Error('User not authenticated');
       }
 
+      // Try with retry logic
+      await this.makeRequestWithRetry(userMessage, messages, session, callbacks);
+
+    } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') {
+        console.log('Streaming request aborted');
+        return;
+      }
+      
+      console.error('Streaming LLM service error:', error);
+      callbacks.onError(error instanceof Error ? error : new Error('Unknown streaming error'));
+    }
+  }
+
+  private async makeRequestWithRetry(
+    userMessage: string,
+    messages: any[],
+    session: any,
+    callbacks: StreamingResponse,
+    retryCount = 0
+  ): Promise<void> {
+    const maxRetries = 3;
+    const baseDelay = 1000;
+
+    try {
       const response = await fetch('https://uasluhbtcpuigwkuslum.supabase.co/functions/v1/streaming-chat', {
         method: 'POST',
         headers: {
@@ -57,35 +94,63 @@ export class StreamingLLMService {
           message: userMessage.trim(),
           conversationHistory: messages,
           useOpenRouter: true,
-          model: 'meta-llama/llama-3.2-3b-instruct:free'
+          model: 'meta-llama/llama-3.1-8b-instruct:free' // Better model with higher rate limits
         }),
-        signal: this.abortController.signal,
+        signal: this.abortController?.signal,
       });
+
+      if (response.status === 429 && retryCount < maxRetries) {
+        // Rate limited, retry with exponential backoff
+        const delay = baseDelay * Math.pow(2, retryCount) + Math.random() * 1000;
+        console.log(`Rate limited, retrying in ${delay}ms (attempt ${retryCount + 1}/${maxRetries})`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        return this.makeRequestWithRetry(userMessage, messages, session, callbacks, retryCount + 1);
+      }
 
       if (!response.ok) {
         const error = await response.json().catch(() => ({ error: 'Failed to parse error response' }));
-        throw new Error(error.error || 'Failed to generate streaming response');
+        throw new Error(error.error || `HTTP ${response.status}: ${response.statusText}`);
       }
 
-      const reader = response.body?.getReader();
-      if (!reader) {
-        throw new Error('No response stream available');
+      await this.processStreamingResponse(response, userMessage, callbacks);
+
+    } catch (error) {
+      if (retryCount < maxRetries && error instanceof Error && 
+          (error.message.includes('429') || error.message.includes('Rate limit'))) {
+        const delay = baseDelay * Math.pow(2, retryCount) + Math.random() * 1000;
+        console.log(`Request failed with rate limit, retrying in ${delay}ms (attempt ${retryCount + 1}/${maxRetries})`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        return this.makeRequestWithRetry(userMessage, messages, session, callbacks, retryCount + 1);
       }
+      throw error;
+    }
+  }
 
-      const decoder = new TextDecoder();
-      let fullResponse = '';
-      let buffer = '';
+  private async processStreamingResponse(
+    response: Response,
+    userMessage: string,
+    callbacks: StreamingResponse
+  ): Promise<void> {
+    const reader = response.body?.getReader();
+    if (!reader) {
+      throw new Error('No response stream available');
+    }
 
+    const decoder = new TextDecoder();
+    let fullResponse = '';
+    let buffer = '';
+
+    try {
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
 
         const chunk = decoder.decode(value, { stream: true });
         buffer += chunk;
-        const lines = buffer.split('\n');
         
-        // Keep the last incomplete line in the buffer
-        buffer = lines.pop() || '';
+        // Process complete lines
+        let lines = buffer.split('\n');
+        buffer = lines.pop() || ''; // Keep incomplete line in buffer
 
         for (const line of lines) {
           if (line.startsWith('data: ')) {
@@ -100,9 +165,31 @@ export class StreamingLLMService {
                 callbacks.onChunk(content);
               }
             } catch (e) {
-              // More robust error handling for malformed chunks
-              if (data.length > 10) { // Only log substantial malformed chunks
-                console.warn('Skipped malformed chunk:', data.substring(0, 50) + (data.length > 50 ? '...' : ''));
+              // Only log substantial chunks to reduce noise
+              if (data.length > 20) {
+                console.warn('Skipped malformed chunk:', data.substring(0, 100) + (data.length > 100 ? '...' : ''));
+              }
+            }
+          }
+        }
+      }
+
+      // Process any remaining buffer content
+      if (buffer.trim()) {
+        const finalLines = buffer.split('\n');
+        for (const line of finalLines) {
+          if (line.startsWith('data: ')) {
+            const data = line.slice(6).trim();
+            if (data && data !== '[DONE]') {
+              try {
+                const parsed = JSON.parse(data);
+                if (parsed.choices?.[0]?.delta?.content) {
+                  const content = parsed.choices[0].delta.content;
+                  fullResponse += content;
+                  callbacks.onChunk(content);
+                }
+              } catch (e) {
+                // Ignore parsing errors for final cleanup
               }
             }
           }
@@ -114,15 +201,9 @@ export class StreamingLLMService {
       this.conversationHistory.push({ role: 'assistant', content: fullResponse });
 
       callbacks.onComplete(fullResponse);
-      
-    } catch (error) {
-      if (error instanceof Error && error.name === 'AbortError') {
-        console.log('Streaming request aborted');
-        return;
-      }
-      
-      console.error('Streaming LLM service error:', error);
-      callbacks.onError(error instanceof Error ? error : new Error('Unknown streaming error'));
+
+    } finally {
+      reader.releaseLock();
     }
   }
 

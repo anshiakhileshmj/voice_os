@@ -13,7 +13,7 @@ serve(async (req) => {
   }
 
   try {
-    const { message, conversationHistory = [], useOpenRouter = false, model = 'meta-llama/llama-3.2-3b-instruct:free' } = await req.json();
+    const { message, conversationHistory = [], useOpenRouter = false, model = 'meta-llama/llama-3.1-8b-instruct:free' } = await req.json();
 
     if (!message?.trim()) {
       throw new Error('Message is required');
@@ -24,7 +24,7 @@ serve(async (req) => {
     let requestBody: any;
 
     if (useOpenRouter) {
-      // Use OpenRouter for better time/location handling
+      // Use OpenRouter with better rate limits
       apiUrl = 'https://openrouter.ai/api/v1/chat/completions';
       apiKey = Deno.env.get('OPENROUTER_API_KEY');
       
@@ -57,6 +57,8 @@ serve(async (req) => {
       };
     }
 
+    console.log(`Making request to ${useOpenRouter ? 'OpenRouter' : 'Together AI'} with model: ${model}`);
+
     const response = await fetch(apiUrl, {
       method: 'POST',
       headers: {
@@ -72,58 +74,39 @@ serve(async (req) => {
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('LLM API Error:', errorText);
+      console.error(`${useOpenRouter ? 'OpenRouter' : 'Together AI'} API Error:`, response.status, errorText);
+      
+      // If OpenRouter fails, try Together AI as fallback
+      if (useOpenRouter && response.status === 429) {
+        console.log('OpenRouter rate limited, falling back to Together AI');
+        const togetherApiKey = Deno.env.get('TOGETHER_AI_API_KEY');
+        
+        if (togetherApiKey) {
+          const fallbackResponse = await fetch('https://api.together.xyz/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${togetherApiKey}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              model: 'meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo',
+              messages: conversationHistory,
+              stream: true,
+              temperature: 0.7,
+              max_tokens: 1000,
+            }),
+          });
+          
+          if (fallbackResponse.ok) {
+            return createStreamResponse(fallbackResponse);
+          }
+        }
+      }
+      
       throw new Error(`LLM API error: ${response.status} ${response.statusText}`);
     }
 
-    // Create a transform stream to handle the response
-    const stream = new ReadableStream({
-      async start(controller) {
-        const reader = response.body?.getReader();
-        if (!reader) {
-          controller.close();
-          return;
-        }
-
-        const decoder = new TextDecoder();
-
-        try {
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-
-            const chunk = decoder.decode(value, { stream: true });
-            const lines = chunk.split('\n');
-
-            for (const line of lines) {
-              if (line.startsWith('data: ')) {
-                const data = line.slice(6);
-                if (data.trim() === '[DONE]') {
-                  controller.close();
-                  return;
-                }
-                
-                controller.enqueue(new TextEncoder().encode(`data: ${data}\n\n`));
-              }
-            }
-          }
-        } catch (error) {
-          console.error('Stream processing error:', error);
-          controller.error(error);
-        } finally {
-          reader.releaseLock();
-        }
-      }
-    });
-
-    return new Response(stream, {
-      headers: {
-        ...corsHeaders,
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
-        'Connection': 'keep-alive',
-      },
-    });
+    return createStreamResponse(response);
 
   } catch (error) {
     console.error('Streaming chat error:', error);
@@ -135,3 +118,54 @@ serve(async (req) => {
     });
   }
 });
+
+function createStreamResponse(response: Response): Response {
+  // Create a transform stream to handle the response
+  const stream = new ReadableStream({
+    async start(controller) {
+      const reader = response.body?.getReader();
+      if (!reader) {
+        controller.close();
+        return;
+      }
+
+      const decoder = new TextDecoder();
+
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          const chunk = decoder.decode(value, { stream: true });
+          const lines = chunk.split('\n');
+
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              const data = line.slice(6);
+              if (data.trim() === '[DONE]') {
+                controller.close();
+                return;
+              }
+              
+              controller.enqueue(new TextEncoder().encode(`data: ${data}\n\n`));
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Stream processing error:', error);
+        controller.error(error);
+      } finally {
+        reader.releaseLock();
+      }
+    }
+  });
+
+  return new Response(stream, {
+    headers: {
+      ...corsHeaders,
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+    },
+  });
+}
