@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { audioProcessingService } from '@/services/audioProcessingService';
 import { conversationContextService } from '@/services/conversationContextService';
+import { streamingTTSService } from '@/services/streamingTTSService';
 
 interface EnhancedSpeechRecognitionHook {
   isRecording: boolean;
@@ -45,6 +46,16 @@ export const useEnhancedSpeechRecognition = (): EnhancedSpeechRecognitionHook =>
       clearTimeout(restartTimeoutRef.current);
       restartTimeoutRef.current = null;
     }
+  }, []);
+
+  const isStopCommand = useCallback((text: string): boolean => {
+    const stopKeywords = [
+      'stop', 'pause', 'halt', 'quiet', 'silence', 'shut up', 'stop talking',
+      'stop speaking', 'stop audio', 'mute', 'end', 'cancel'
+    ];
+    
+    const lowerText = text.toLowerCase();
+    return stopKeywords.some(keyword => lowerText.includes(keyword));
   }, []);
 
   const handleSpeechStart = useCallback(() => {
@@ -107,6 +118,12 @@ export const useEnhancedSpeechRecognition = (): EnhancedSpeechRecognitionHook =>
           finalTranscript += transcript;
           maxConfidence = Math.max(maxConfidence, currentConfidence);
           
+          // Check for stop commands and stop TTS if detected
+          if (isStopCommand(finalTranscript.trim())) {
+            console.log('Stop command detected, stopping TTS:', finalTranscript.trim());
+            streamingTTSService.stopPlayback();
+          }
+          
           // Handle speech end detection
           handleSpeechEnd();
           
@@ -131,6 +148,12 @@ export const useEnhancedSpeechRecognition = (): EnhancedSpeechRecognitionHook =>
           // Handle speech start detection
           if (interimTranscript.trim() && !speechStartedRef.current) {
             handleSpeechStart();
+          }
+          
+          // Check for stop commands in partial transcript and stop TTS immediately
+          if (isStopCommand(interimTranscript.trim())) {
+            console.log('Stop command detected in partial transcript, stopping TTS:', interimTranscript.trim());
+            streamingTTSService.stopPlayback();
           }
           
           // Update conversation context with partial result
@@ -225,7 +248,7 @@ export const useEnhancedSpeechRecognition = (): EnhancedSpeechRecognitionHook =>
     });
 
     return recognition;
-  }, [toast, handleSpeechStart, handleSpeechEnd]);
+  }, [toast, handleSpeechStart, handleSpeechEnd, isStopCommand]);
 
   const startContinuousRecognition = useCallback(async () => {
     if (isActiveRef.current) {
@@ -290,7 +313,7 @@ export const useEnhancedSpeechRecognition = (): EnhancedSpeechRecognitionHook =>
         console.log('Enhanced STT: Started continuous recognition - will not auto-stop');
         toast({
           title: "Enhanced Voice Recognition Started",
-          description: "Continuous listening active - click 'End Call' to stop."
+          description: "Continuous listening active - say 'stop' to interrupt TTS or click 'End Call' to stop."
         });
       } catch (error) {
         console.error('Enhanced STT: Start failed:', error);

@@ -5,6 +5,7 @@ import { streamingLLMService } from './streamingLLMService';
 import { spotifyService } from './spotifyService';
 import { spotifyWebPlaybackService } from './spotifyWebPlaybackService';
 import { automateService } from './automateService';
+import { locationService } from './locationService';
 
 export interface ConversationCallbacks {
   onLLMChunk: (chunk: string) => void;
@@ -46,8 +47,8 @@ export class SimplifiedActionRouter {
 
       this.currentResponse = '';
 
-      // Only enhance with Spotify context if user is asking Spotify-related questions
-      const enhancedInput = await this.enhanceWithSpotifyContext(userInput);
+      // Enhanced input with location/time context and selective Spotify context
+      const enhancedInput = await this.enhanceWithContextualInfo(userInput);
 
       await languageAwareLLMService.generateLanguageAwareResponse(enhancedInput, {
         voiceId: this.selectedVoiceId,
@@ -70,6 +71,71 @@ export class SimplifiedActionRouter {
     }
   }
 
+  private async enhanceWithContextualInfo(userInput: string): Promise<string> {
+    const input = userInput.toLowerCase();
+    let enhancedInput = userInput;
+    
+    try {
+      // Add location and time context for relevant queries
+      if (this.isLocationTimeQuery(input)) {
+        const locationData = await locationService.getUserLocation();
+        const currentTime = new Date().toLocaleString("en-US", { 
+          timeZone: locationData.timezone,
+          weekday: 'long',
+          year: 'numeric',
+          month: 'long',
+          day: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+          timeZoneName: 'short'
+        });
+        
+        const contextInfo = `Current time and location context:
+- Current time: ${currentTime}
+- Location: ${locationData.city}, ${locationData.region}, ${locationData.country}
+- Timezone: ${locationData.timezone}
+- Weather location coordinates: ${locationData.latitude}, ${locationData.longitude}
+
+User question: ${userInput}`;
+        
+        return contextInfo;
+      }
+
+      // Only add Spotify context for explicit Spotify-related queries
+      if (this.isExplicitSpotifyQuery(input)) {
+        return await this.enhanceWithSpotifyContext(userInput);
+      }
+
+      return enhancedInput;
+    } catch (error) {
+      console.error('Error enhancing context:', error);
+      return userInput;
+    }
+  }
+
+  private isLocationTimeQuery(input: string): boolean {
+    const locationTimeKeywords = [
+      'time', 'clock', 'what time', 'current time', 'time is it',
+      'where am i', 'my location', 'current location', 'timezone', 'date today',
+      'what day', 'weather', 'temperature', 'forecast', 'climate',
+      'where', 'location', 'city', 'country', 'region'
+    ];
+    
+    return locationTimeKeywords.some(keyword => input.includes(keyword));
+  }
+
+  private isExplicitSpotifyQuery(input: string): boolean {
+    // Much more restrictive Spotify detection
+    const explicitSpotifyKeywords = [
+      'spotify', 'my spotify', 'spotify account', 'spotify premium', 'spotify subscription',
+      'play song', 'play music', 'play track', 'spotify playlist', 'my playlist',
+      'disconnect spotify', 'connect spotify', 'spotify profile', 'spotify name',
+      'what song', 'current song', 'playing music', 'spotify device'
+    ];
+    
+    return explicitSpotifyKeywords.some(keyword => input.includes(keyword));
+  }
+
   private async enhanceWithSpotifyContext(userInput: string): Promise<string> {
     try {
       const spotifyInfo = await spotifyService.getDetailedSpotifyInfo();
@@ -78,66 +144,38 @@ export class SimplifiedActionRouter {
         return userInput;
       }
 
-      const input = userInput.toLowerCase();
+      let context = `User's Spotify Account Information:\n`;
       
-      // More specific detection - only inject context for explicit Spotify queries
-      const spotifyKeywords = [
-        'spotify', 'playlist', 'music', 'song', 'track', 'artist', 'album',
-        'premium', 'subscription', 'account', 'play ', 'playing', 'listen'
-      ];
-      
-      const isSpotifyRelated = spotifyKeywords.some(keyword => input.includes(keyword));
-      
-      // Also check for questions about user's data that might relate to Spotify
-      const personalDataKeywords = ['my name', 'who am i', 'my account', 'my profile'];
-      const isPersonalDataQuery = personalDataKeywords.some(keyword => input.includes(keyword));
-      
-      if (isSpotifyRelated || isPersonalDataQuery) {
-        let context = `User's Spotify Account Information:\n`;
-        
-        if (spotifyInfo.profile) {
-          context += `- Name: ${spotifyInfo.profile.display_name || 'Not available'}\n`;
-          context += `- Email: ${spotifyInfo.profile.email || 'Not available'}\n`;
-          context += `- Country: ${spotifyInfo.profile.country || 'Not available'}\n`;
-          context += `- Account Type: ${spotifyInfo.profile.product || 'free'} (${spotifyInfo.subscription?.isPremium ? 'Premium subscriber' : 'Free user'})\n`;
-          context += `- Followers: ${spotifyInfo.profile.followers_total || 0}\n`;
-        }
-        
-        if (spotifyInfo.playlists.length > 0) {
-          context += `- Total Playlists: ${spotifyInfo.playlists.length}\n`;
-          context += `- Playlist Names: ${spotifyInfo.playlists.slice(0, 10).map(p => p.name).join(', ')}${spotifyInfo.playlists.length > 10 ? '...' : ''}\n`;
-          const ownedPlaylists = spotifyInfo.playlists.filter(p => p.owner?.id === spotifyInfo.profile?.id);
-          context += `- Owned Playlists: ${ownedPlaylists.length}\n`;
-          const publicPlaylists = spotifyInfo.playlists.filter(p => p.public);
-          context += `- Public Playlists: ${publicPlaylists.length}\n`;
-        }
-        
-        if (spotifyInfo.artists.length > 0) {
-          context += `- Top Artists (${spotifyInfo.artists.length}): ${spotifyInfo.artists.slice(0, 8).map(a => a.name).join(', ')}\n`;
-          const genres = [...new Set(spotifyInfo.artists.flatMap(a => a.genres || []))];
-          context += `- Favorite Genres: ${genres.slice(0, 5).join(', ')}\n`;
-        }
-        
-        if (spotifyInfo.tracks.length > 0) {
-          context += `- Top Tracks (${spotifyInfo.tracks.length}): ${spotifyInfo.tracks.slice(0, 8).map(t => `"${t.name}" by ${t.artists?.[0]?.name || 'Unknown'}`).join(', ')}\n`;
-        }
-        
-        if (spotifyInfo.devices.length > 0) {
-          context += `- Available Devices: ${spotifyInfo.devices.map(d => `${d.name} (${d.type})`).join(', ')}\n`;
-          const activeDevice = spotifyInfo.devices.find(d => d.is_active);
-          if (activeDevice) {
-            context += `- Currently Active Device: ${activeDevice.name}\n`;
-          }
-        }
-
-        if (!spotifyInfo.subscription?.isPremium) {
-          context += `- Note: User has free Spotify account, so playback control is limited\n`;
-        }
-        
-        return `${context}\nUser Question: ${userInput}`;
+      if (spotifyInfo.profile) {
+        context += `- Name: ${spotifyInfo.profile.display_name || 'Not available'}\n`;
+        context += `- Email: ${spotifyInfo.profile.email || 'Not available'}\n`;
+        context += `- Country: ${spotifyInfo.profile.country || 'Not available'}\n`;
+        context += `- Account Type: ${spotifyInfo.profile.product || 'free'} (${spotifyInfo.subscription?.isPremium ? 'Premium subscriber' : 'Free user'})\n`;
+        context += `- Followers: ${spotifyInfo.profile.followers_total || 0}\n`;
       }
       
-      return userInput;
+      if (spotifyInfo.playlists.length > 0) {
+        context += `- Total Playlists: ${spotifyInfo.playlists.length}\n`;
+        context += `- Playlist Names: ${spotifyInfo.playlists.slice(0, 10).map(p => p.name).join(', ')}${spotifyInfo.playlists.length > 10 ? '...' : ''}\n`;
+      }
+      
+      if (spotifyInfo.artists.length > 0) {
+        context += `- Top Artists (${spotifyInfo.artists.length}): ${spotifyInfo.artists.slice(0, 8).map(a => a.name).join(', ')}\n`;
+      }
+      
+      if (spotifyInfo.tracks.length > 0) {
+        context += `- Top Tracks (${spotifyInfo.tracks.length}): ${spotifyInfo.tracks.slice(0, 8).map(t => `"${t.name}" by ${t.artists?.[0]?.name || 'Unknown'}`).join(', ')}\n`;
+      }
+      
+      if (spotifyInfo.devices.length > 0) {
+        context += `- Available Devices: ${spotifyInfo.devices.map(d => `${d.name} (${d.type})`).join(', ')}\n`;
+      }
+
+      if (!spotifyInfo.subscription?.isPremium) {
+        context += `- Note: User has free Spotify account, so playback control is limited\n`;
+      }
+      
+      return `${context}\nUser Question: ${userInput}`;
     } catch (error) {
       console.error('Error enhancing with Spotify context:', error);
       return userInput;
@@ -146,6 +184,12 @@ export class SimplifiedActionRouter {
 
   private async handleQuickActions(userInput: string): Promise<{message: string, speak: boolean, data?: any} | null> {
     const input = userInput.toLowerCase();
+
+    // Handle TTS stop commands
+    if (this.isStopCommand(input)) {
+      streamingTTSService.stopPlayback();
+      return { message: "Stopping playback.", speak: false };
+    }
 
     // Handle disconnect Spotify - improved pattern matching
     if (input.includes('disconnect spotify') || 
@@ -267,6 +311,15 @@ export class SimplifiedActionRouter {
     }
 
     return null;
+  }
+
+  private isStopCommand(input: string): boolean {
+    const stopKeywords = [
+      'stop', 'pause', 'halt', 'quiet', 'silence', 'shut up', 'stop talking',
+      'stop speaking', 'stop audio', 'mute', 'end', 'cancel'
+    ];
+    
+    return stopKeywords.some(keyword => input.includes(keyword));
   }
 
   private async handleTTS(text: string, callbacks: ConversationCallbacks) {

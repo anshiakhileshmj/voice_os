@@ -17,7 +17,7 @@ export interface EnhancedStreamingResponse {
 class EnhancedStreamingLLMService {
   private abortController: AbortController | null = null;
   private streamBuffer: string = '';
-  private partialChunk: string = ''; // Buffer for incomplete JSON chunks
+  private partialBuffer: string = ''; // Buffer for incomplete JSON chunks
   private readonly CONTEXT_CHUNK_SIZE = 50; // Send context every 50 characters
 
   async generateContextAwareResponse(
@@ -67,7 +67,8 @@ class EnhancedStreamingLLMService {
         body: JSON.stringify({
           message: userMessage.trim(),
           conversationHistory: messages,
-          useContextAware: true
+          useOpenRouter: true,
+          model: 'meta-llama/llama-3.1-8b-instruct:free'
         }),
         signal: this.abortController.signal,
       });
@@ -85,29 +86,28 @@ class EnhancedStreamingLLMService {
       const decoder = new TextDecoder();
       let fullResponse = '';
       this.streamBuffer = '';
-      this.partialChunk = ''; // Reset partial chunk buffer
+      this.partialBuffer = ''; // Reset buffer
 
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
 
         const chunk = decoder.decode(value, { stream: true });
-        // Add chunk to any existing partial data
-        const completeChunk = this.partialChunk + chunk;
+        // Combine with any buffered partial data
+        const completeChunk = this.partialBuffer + chunk;
         const lines = completeChunk.split('\n');
         
         // Keep the last line as partial if it doesn't end with newline
-        this.partialChunk = completeChunk.endsWith('\n') ? '' : lines.pop() || '';
+        this.partialBuffer = completeChunk.endsWith('\n') ? '' : lines.pop() || '';
 
         for (const line of lines) {
           if (line.startsWith('data: ')) {
             const data = line.slice(6).trim();
             if (data === '[DONE]') continue;
-            if (!data) continue; // Skip empty data lines
+            if (!data) continue;
             
             try {
               const parsed = JSON.parse(data);
-              // Handle both OpenAI and Together AI response formats
               const content = parsed.choices?.[0]?.delta?.content || 
                              parsed.choices?.[0]?.text || '';
               
@@ -125,18 +125,18 @@ class EnhancedStreamingLLMService {
                 }
               }
             } catch (e) {
-              // Only log if it's not just a partial chunk
-              if (data.length > 10) {
-                console.warn('Skipped malformed chunk (will retry):', data.substring(0, 100) + '...');
+              // Only log substantial parsing failures, not fragments
+              if (data.length > 50) {
+                console.warn('Skipped malformed chunk:', data.substring(0, 100) + '...');
               }
             }
           }
         }
       }
 
-      // Process any remaining partial chunk
-      if (this.partialChunk.startsWith('data: ')) {
-        const data = this.partialChunk.slice(6).trim();
+      // Process any remaining buffered data
+      if (this.partialBuffer.startsWith('data: ')) {
+        const data = this.partialBuffer.slice(6).trim();
         if (data && data !== '[DONE]') {
           try {
             const parsed = JSON.parse(data);
@@ -148,7 +148,7 @@ class EnhancedStreamingLLMService {
               callbacks.onChunk(content);
             }
           } catch (e) {
-            console.warn('Final chunk parse failed:', data);
+            console.warn('Final buffered chunk parse failed:', data.substring(0, 100));
           }
         }
       }
@@ -189,7 +189,9 @@ Guidelines:
 - Build upon context from earlier messages
 - Be concise but informative for voice interaction
 - Ask follow-up questions when context suggests it
-- Maintain conversation flow naturally`;
+- Maintain conversation flow naturally
+- For time queries, use the provided current time information
+- For location queries, use the provided location context`;
 
     if (currentTopic) {
       systemPrompt += `\n\nCurrent conversation topic: ${currentTopic}`;
@@ -225,7 +227,7 @@ Guidelines:
       this.abortController.abort();
       this.abortController = null;
     }
-    this.partialChunk = ''; // Clear partial chunk buffer
+    this.partialBuffer = ''; // Clear buffer
   }
 
   getConversationStats() {

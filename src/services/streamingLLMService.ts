@@ -11,10 +11,10 @@ export interface StreamingResponse {
   onError: (error: Error) => void;
 }
 
-export class StreamingLLMService {
+class StreamingLLMService {
   private conversationHistory: StreamingMessage[] = [];
   private abortController: AbortController | null = null;
-  private partialChunk: string = ''; // Buffer for incomplete JSON chunks
+  private partialBuffer: string = ''; // Buffer for incomplete chunks
 
   async generateStreamingResponse(
     userMessage: string,
@@ -25,10 +25,6 @@ export class StreamingLLMService {
       return;
     }
 
-    // Add user message to history
-    const userMsg: StreamingMessage = { role: 'user', content: userMessage.trim() };
-    this.conversationHistory.push(userMsg);
-
     try {
       console.log('Starting streaming LLM response for:', userMessage.substring(0, 50) + '...');
       
@@ -37,6 +33,17 @@ export class StreamingLLMService {
         this.abortController.abort();
       }
       this.abortController = new AbortController();
+
+      // Add user message to history
+      this.conversationHistory.push({ 
+        role: 'user', 
+        content: userMessage.trim() 
+      });
+
+      // Keep only last 10 messages to prevent context overflow
+      if (this.conversationHistory.length > 10) {
+        this.conversationHistory = this.conversationHistory.slice(-10);
+      }
 
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
@@ -52,7 +59,9 @@ export class StreamingLLMService {
         },
         body: JSON.stringify({
           message: userMessage.trim(),
-          conversationHistory: this.conversationHistory.slice(-8), // Keep last 8 messages
+          conversationHistory: this.conversationHistory,
+          useOpenRouter: true,
+          model: 'meta-llama/llama-3.1-8b-instruct:free'
         }),
         signal: this.abortController.signal,
       });
@@ -69,29 +78,28 @@ export class StreamingLLMService {
 
       const decoder = new TextDecoder();
       let fullResponse = '';
-      this.partialChunk = ''; // Reset partial chunk buffer
+      this.partialBuffer = ''; // Reset buffer
 
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
 
         const chunk = decoder.decode(value, { stream: true });
-        // Add chunk to any existing partial data
-        const completeChunk = this.partialChunk + chunk;
+        // Combine with any buffered partial data
+        const completeChunk = this.partialBuffer + chunk;
         const lines = completeChunk.split('\n');
         
         // Keep the last line as partial if it doesn't end with newline
-        this.partialChunk = completeChunk.endsWith('\n') ? '' : lines.pop() || '';
+        this.partialBuffer = completeChunk.endsWith('\n') ? '' : lines.pop() || '';
 
         for (const line of lines) {
           if (line.startsWith('data: ')) {
             const data = line.slice(6).trim();
             if (data === '[DONE]') continue;
-            if (!data) continue; // Skip empty data lines
+            if (!data) continue;
             
             try {
               const parsed = JSON.parse(data);
-              // Handle both OpenAI and Together AI response formats
               const content = parsed.choices?.[0]?.delta?.content || 
                              parsed.choices?.[0]?.text || '';
               
@@ -100,18 +108,18 @@ export class StreamingLLMService {
                 callbacks.onChunk(content);
               }
             } catch (e) {
-              // Only log if it's not just a partial chunk
-              if (data.length > 10) {
-                console.warn('Skipped malformed chunk (will retry):', data.substring(0, 100) + '...');
+              // Only log substantial parsing failures, not fragments
+              if (data.length > 50) {
+                console.warn('Skipped malformed chunk:', data.substring(0, 100) + '...');
               }
             }
           }
         }
       }
 
-      // Process any remaining partial chunk
-      if (this.partialChunk.startsWith('data: ')) {
-        const data = this.partialChunk.slice(6).trim();
+      // Process any remaining buffered data
+      if (this.partialBuffer.startsWith('data: ')) {
+        const data = this.partialBuffer.slice(6).trim();
         if (data && data !== '[DONE]') {
           try {
             const parsed = JSON.parse(data);
@@ -122,14 +130,18 @@ export class StreamingLLMService {
               callbacks.onChunk(content);
             }
           } catch (e) {
-            console.warn('Final chunk parse failed:', data);
+            console.warn('Final buffered chunk parse failed:', data.substring(0, 100));
           }
         }
       }
 
       // Add assistant response to history
-      const assistantMsg: StreamingMessage = { role: 'assistant', content: fullResponse };
-      this.conversationHistory.push(assistantMsg);
+      if (fullResponse.trim()) {
+        this.conversationHistory.push({ 
+          role: 'assistant', 
+          content: fullResponse.trim() 
+        });
+      }
 
       callbacks.onComplete(fullResponse);
       
@@ -144,16 +156,17 @@ export class StreamingLLMService {
     }
   }
 
-  stopStreaming() {
+  stopStreaming(): void {
     if (this.abortController) {
       this.abortController.abort();
       this.abortController = null;
     }
-    this.partialChunk = ''; // Clear partial chunk buffer
+    this.partialBuffer = ''; // Clear buffer
   }
 
-  clearHistory() {
+  clearHistory(): void {
     this.conversationHistory = [];
+    console.log('Conversation history cleared');
   }
 
   getHistory(): StreamingMessage[] {
