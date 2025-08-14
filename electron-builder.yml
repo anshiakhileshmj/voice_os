@@ -1,0 +1,47 @@
+
+appId: com.mjak.voiceos
+productName: MJAK Voice OS
+copyright: Copyright © 2024 MJAK
+directories:
+  output: build/
+  buildResources: build/
+files:
+  - dist/**/*
+  - electron/**/*
+  - os/**/*
+  - public/favicon.ico
+  - package.json
+extraResources:
+  - os/**/*
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+        - ia32
+  icon: public/favicon.ico
+nsis:
+  oneClick: false
+  allowElevation: true
+  allowToChangeInstallationDirectory: true
+  installerIcon: public/favicon.ico
+  uninstallerIcon: public/favicon.ico
+  installerHeaderIcon: public/favicon.ico
+  createDesktopShortcut: always
+  createStartMenuShortcut: true
+  shortcutName: MJAK Voice OS
+mac:
+  target:
+    - target: dmg
+      arch:
+        - x64
+        - arm64
+  icon: public/favicon.ico
+  category: public.app-category.productivity
+linux:
+  target:
+    - target: AppImage
+      arch:
+        - x64
+  icon: public/favicon.ico
+  category: Office
