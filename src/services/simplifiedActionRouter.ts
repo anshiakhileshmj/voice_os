@@ -1,4 +1,3 @@
-
 import { streamingTTSService } from './streamingTTSService';
 import { languageAwareLLMService } from './languageAwareLLMService';
 import { streamingLLMService } from './streamingLLMService';
@@ -72,38 +71,62 @@ export class SimplifiedActionRouter {
 
   private async enhanceWithSpotifyContext(userInput: string): Promise<string> {
     try {
-      const isConnected = await spotifyService.isConnected();
-      if (!isConnected) {
+      const spotifyInfo = await spotifyService.getDetailedSpotifyInfo();
+      
+      if (!spotifyInfo.isConnected) {
         return userInput;
       }
 
       const input = userInput.toLowerCase();
       
       // Check if the user is asking about their Spotify data
-      if (input.includes('my name') || input.includes('spotify') || 
-          input.includes('playlist') || input.includes('favorite') || 
-          input.includes('top') || input.includes('music')) {
+      if (input.includes('spotify') || input.includes('playlist') || 
+          input.includes('favorite') || input.includes('top') || 
+          input.includes('music') || input.includes('artist') ||
+          input.includes('song') || input.includes('track') ||
+          input.includes('premium') || input.includes('subscription') ||
+          input.includes('my name') || input.includes('account')) {
         
-        const spotifyData = await spotifyService.getStoredSpotifyData();
+        let context = `User's Spotify Account Information:\n`;
         
-        let context = `User's Spotify Information:\n`;
-        
-        if (spotifyData.profile) {
-          context += `- Name: ${spotifyData.profile.display_name || 'Not available'}\n`;
-          context += `- Country: ${spotifyData.profile.country || 'Not available'}\n`;
-          context += `- Account Type: ${spotifyData.profile.product || 'Not available'}\n`;
+        if (spotifyInfo.profile) {
+          context += `- Name: ${spotifyInfo.profile.display_name || 'Not available'}\n`;
+          context += `- Email: ${spotifyInfo.profile.email || 'Not available'}\n`;
+          context += `- Country: ${spotifyInfo.profile.country || 'Not available'}\n`;
+          context += `- Account Type: ${spotifyInfo.profile.product || 'free'} (${spotifyInfo.subscription?.isPremium ? 'Premium subscriber' : 'Free user'})\n`;
+          context += `- Followers: ${spotifyInfo.profile.followers_total || 0}\n`;
         }
         
-        if (spotifyData.playlists.length > 0) {
-          context += `- Playlists (${spotifyData.playlists.length}): ${spotifyData.playlists.slice(0, 5).map(p => p.name).join(', ')}\n`;
+        if (spotifyInfo.playlists.length > 0) {
+          context += `- Total Playlists: ${spotifyInfo.playlists.length}\n`;
+          context += `- Playlist Names: ${spotifyInfo.playlists.slice(0, 10).map(p => p.name).join(', ')}${spotifyInfo.playlists.length > 10 ? '...' : ''}\n`;
+          const ownedPlaylists = spotifyInfo.playlists.filter(p => p.owner?.id === spotifyInfo.profile?.id);
+          context += `- Owned Playlists: ${ownedPlaylists.length}\n`;
+          const publicPlaylists = spotifyInfo.playlists.filter(p => p.public);
+          context += `- Public Playlists: ${publicPlaylists.length}\n`;
         }
         
-        if (spotifyData.artists.length > 0) {
-          context += `- Top Artists: ${spotifyData.artists.slice(0, 5).map(a => a.name).join(', ')}\n`;
+        if (spotifyInfo.artists.length > 0) {
+          context += `- Top Artists (${spotifyInfo.artists.length}): ${spotifyInfo.artists.slice(0, 8).map(a => a.name).join(', ')}\n`;
+          const genres = [...new Set(spotifyInfo.artists.flatMap(a => a.genres || []))];
+          context += `- Favorite Genres: ${genres.slice(0, 5).join(', ')}\n`;
         }
         
-        if (spotifyData.tracks.length > 0) {
-          context += `- Top Tracks: ${spotifyData.tracks.slice(0, 5).map(t => `${t.name} by ${t.artist_names}`).join(', ')}\n`;
+        if (spotifyInfo.tracks.length > 0) {
+          context += `- Top Tracks (${spotifyInfo.tracks.length}): ${spotifyInfo.tracks.slice(0, 8).map(t => `"${t.name}" by ${t.artists?.[0]?.name || 'Unknown'}`).join(', ')}\n`;
+        }
+        
+        if (spotifyInfo.devices.length > 0) {
+          context += `- Available Devices: ${spotifyInfo.devices.map(d => `${d.name} (${d.type})`).join(', ')}\n`;
+          const activeDevice = spotifyInfo.devices.find(d => d.is_active);
+          if (activeDevice) {
+            context += `- Currently Active Device: ${activeDevice.name}\n`;
+          }
+        }
+
+        // Add note about premium features
+        if (!spotifyInfo.subscription?.isPremium) {
+          context += `- Note: User has free Spotify account, so playback control is limited\n`;
         }
         
         return `${context}\nUser Question: ${userInput}`;
@@ -118,6 +141,21 @@ export class SimplifiedActionRouter {
 
   private async handleQuickActions(userInput: string): Promise<{message: string, speak: boolean, data?: any} | null> {
     const input = userInput.toLowerCase();
+
+    // Handle disconnect Spotify
+    if (input.includes('disconnect spotify') || input.includes('unlink spotify') || input.includes('remove spotify')) {
+      try {
+        const isConnected = await spotifyService.isConnected();
+        if (!isConnected) {
+          return { message: "Your Spotify account is not currently connected.", speak: true };
+        }
+
+        await spotifyService.disconnect();
+        return { message: "I've disconnected your Spotify account. You can reconnect anytime by clicking the Spotify button.", speak: true };
+      } catch (error) {
+        return { message: "I had trouble disconnecting your Spotify account. Please try again.", speak: true };
+      }
+    }
 
     // Spotify commands
     if (input.includes('play') && (input.includes('song') || input.includes('music') || input.includes('spotify'))) {

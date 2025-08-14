@@ -1,4 +1,3 @@
-
 import { supabase } from '@/integrations/supabase/client';
 
 export interface SpotifyTokens {
@@ -509,6 +508,80 @@ export class SpotifyService {
     const array = new Uint8Array(length);
     crypto.getRandomValues(array);
     return Array.from(array, byte => byte.toString(16).padStart(2, '0')).join('');
+  }
+
+  async disconnect(): Promise<void> {
+    try {
+      console.log('Disconnecting Spotify...');
+      
+      // Clear localStorage
+      localStorage.removeItem('spotify_tokens');
+      localStorage.removeItem('spotify_user_data');
+      
+      console.log('Spotify disconnected successfully');
+    } catch (error) {
+      console.error('Error disconnecting Spotify:', error);
+      throw error;
+    }
+  }
+
+  async getDetailedSpotifyInfo(): Promise<{
+    isConnected: boolean;
+    profile: any;
+    playlists: any[];
+    artists: any[];
+    tracks: any[];
+    subscription: any;
+    devices: any[];
+  }> {
+    try {
+      const isConnected = await this.isConnected();
+      
+      if (!isConnected) {
+        return {
+          isConnected: false,
+          profile: null,
+          playlists: [],
+          artists: [],
+          tracks: [],
+          subscription: null,
+          devices: []
+        };
+      }
+
+      const [spotifyData, devices] = await Promise.all([
+        this.getStoredSpotifyData(),
+        this.getDevices().catch(() => [])
+      ]);
+
+      // Get subscription info from profile
+      const subscription = spotifyData.profile ? {
+        product: spotifyData.profile.product,
+        country: spotifyData.profile.country,
+        isPremium: spotifyData.profile.product === 'premium'
+      } : null;
+
+      return {
+        isConnected: true,
+        profile: spotifyData.profile,
+        playlists: spotifyData.playlists,
+        artists: spotifyData.artists,
+        tracks: spotifyData.tracks,
+        subscription,
+        devices
+      };
+    } catch (error) {
+      console.error('Error getting detailed Spotify info:', error);
+      return {
+        isConnected: false,
+        profile: null,
+        playlists: [],
+        artists: [],
+        tracks: [],
+        subscription: null,
+        devices: []
+      };
+    }
   }
 }
 

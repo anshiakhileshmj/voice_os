@@ -89,18 +89,31 @@ const FloatingActionButtons: React.FC<FloatingActionButtonsProps> = ({
   };
 
   const handleSpotifyToggle = async () => {
-    // Always show the Spotify Premium popup first when clicking the button
+    // Check if Spotify is already connected
+    if (isSpotifyConnected) {
+      // Show popup asking if user wants to play a song or disconnect
+      toast({
+        title: "Spotify Already Connected",
+        description: "Your Spotify account is already linked. You can ask me to play songs or disconnect your account.",
+      });
+      return;
+    }
+
+    // Show the Spotify Premium popup first when connecting
     setShowSpotifyPremiumPopup(true);
     
     if (!isSpotifyEnabled) {
       onSpotifyToggle(true);
-      if (!isSpotifyConnected) {
-        try {
-          await spotifyService.initiateAuth();
-        } catch (error) {
-          console.error('Spotify connection error:', error);
-          onSpotifyToggle(false);
-        }
+      try {
+        await spotifyService.initiateAuth();
+      } catch (error) {
+        console.error('Spotify connection error:', error);
+        onSpotifyToggle(false);
+        toast({
+          title: "Connection Failed",
+          description: "Failed to connect to Spotify. Please try again.",
+          variant: "destructive"
+        });
       }
     } else {
       onSpotifyToggle(false);
