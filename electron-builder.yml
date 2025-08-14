@@ -30,18 +30,3 @@ nsis:
   createDesktopShortcut: always
   createStartMenuShortcut: true
   shortcutName: MJAK Voice OS
-mac:
-  target:
-    - target: dmg
-      arch:
-        - x64
-        - arm64
-  icon: public/favicon.ico
-  category: public.app-category.productivity
-linux:
-  target:
-    - target: AppImage
-      arch:
-        - x64
-  icon: public/favicon.ico
-  category: Office

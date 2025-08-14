@@ -10,7 +10,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const rootDir = path.resolve(__dirname, '..');
 
-console.log('🔧 Building MJAK Voice OS Electron App...');
+console.log('🔧 Building MJAK Voice OS Windows Executable...');
 
 try {
   // Step 1: Build the React app
@@ -48,26 +48,15 @@ try {
     });
   }
 
-  // Step 4: Build the Electron app
-  console.log('⚡ Building Electron executable...');
-  const platform = process.platform;
-  let buildCommand = 'npx electron-builder';
-  
-  if (platform === 'win32') {
-    buildCommand += ' --win';
-  } else if (platform === 'darwin') {
-    buildCommand += ' --mac';
-  } else {
-    buildCommand += ' --linux';
-  }
-
-  execSync(buildCommand, { 
+  // Step 4: Build the Windows Electron app
+  console.log('⚡ Building Windows Electron executable...');
+  execSync('npx electron-builder --win', { 
     stdio: 'inherit',
     cwd: rootDir 
   });
 
-  console.log('✅ Electron build completed successfully!');
-  console.log('📁 Check the build/ directory for your executable');
+  console.log('✅ Windows Electron build completed successfully!');
+  console.log('📁 Check the build/ directory for your Windows executable');
   console.log('🚀 The app will start with the landing page and automatically launch the Python backend');
 
 } catch (error) {
