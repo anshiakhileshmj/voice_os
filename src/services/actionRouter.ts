@@ -1,4 +1,5 @@
 import { spotifyService } from './spotifyService';
+import { spotifyWebPlaybackService } from './spotifyWebPlaybackService';
 import { llmService, ConversationMessage } from './llmService';
 import { locationService } from './locationService';
 import { documentService } from './documentService';
@@ -27,13 +28,11 @@ export class ActionRouter {
     isAutomateEnabled: boolean = true
   ): Promise<{ intent: IntentResult; actionResult?: ActionResult; llmResponse?: string }> {
     
-    // First, detect intent using enhanced LLM
     const intent = await this.detectIntent(userInput, conversationHistory, isAutomateEnabled);
     
     let actionResult: ActionResult | undefined;
     let llmResponse: string | undefined;
 
-    // Route based on intent
     switch (intent.intent) {
       case 'automate_action':
         actionResult = await this.handleAutomateAction(intent.params);
@@ -69,16 +68,61 @@ export class ActionRouter {
         
       case 'conversation':
       default:
-        // Handle as normal conversation
-        const { response } = await llmService.generateResponse(userInput, conversationHistory);
+        // Enhance conversation with Spotify context
+        const enhancedInput = await this.enhanceWithSpotifyContext(userInput);
+        const { response } = await llmService.generateResponse(enhancedInput, conversationHistory);
         llmResponse = response;
         
-        // Store conversation in history
         await this.storeConversationHistory(userInput, intent.intent, response);
         break;
     }
 
     return { intent, actionResult, llmResponse };
+  }
+
+  private async enhanceWithSpotifyContext(userInput: string): Promise<string> {
+    try {
+      const isConnected = await spotifyService.isConnected();
+      if (!isConnected) {
+        return userInput;
+      }
+
+      const input = userInput.toLowerCase();
+      
+      if (input.includes('my name') || input.includes('spotify') || 
+          input.includes('playlist') || input.includes('favorite') || 
+          input.includes('top') || input.includes('music')) {
+        
+        const spotifyData = await spotifyService.getStoredSpotifyData();
+        
+        let context = `User's Spotify Information:\n`;
+        
+        if (spotifyData.profile) {
+          context += `- Name: ${spotifyData.profile.display_name || 'Not available'}\n`;
+          context += `- Country: ${spotifyData.profile.country || 'Not available'}\n`;
+          context += `- Account Type: ${spotifyData.profile.product || 'Not available'}\n`;
+        }
+        
+        if (spotifyData.playlists.length > 0) {
+          context += `- Playlists (${spotifyData.playlists.length}): ${spotifyData.playlists.slice(0, 5).map(p => p.name).join(', ')}\n`;
+        }
+        
+        if (spotifyData.artists.length > 0) {
+          context += `- Top Artists: ${spotifyData.artists.slice(0, 5).map(a => a.name).join(', ')}\n`;
+        }
+        
+        if (spotifyData.tracks.length > 0) {
+          context += `- Top Tracks: ${spotifyData.tracks.slice(0, 5).map(t => `${t.name} by ${t.artist_names}`).join(', ')}\n`;
+        }
+        
+        return `${context}\nUser Question: ${userInput}`;
+      }
+      
+      return userInput;
+    } catch (error) {
+      console.error('Error enhancing with Spotify context:', error);
+      return userInput;
+    }
   }
 
   private async detectIntent(
@@ -140,23 +184,19 @@ Respond ONLY with valid JSON.`;
         userInput,
         [
           { role: 'system', content: systemPrompt },
-          ...conversationHistory.slice(-2) // Keep minimal context for speed
+          ...conversationHistory.slice(-2)
         ]
       );
 
-      // Debug: Log the raw LLM response for intent detection
       console.debug('[IntentDetection][RawLLMResponse]', response);
 
-      // Try to parse JSON response - handle various formats
       let cleanResponse = response.replace(/```json\n?|\n?```/g, '').trim();
       
-      // If response doesn't start with {, try to find JSON in the response
       if (!cleanResponse.startsWith('{')) {
         const jsonMatch = cleanResponse.match(/\{.*\}/s);
         if (jsonMatch) {
           cleanResponse = jsonMatch[0];
         } else {
-          // If no JSON found, treat as conversation
           return {
             intent: 'conversation',
             confidence: 0.8,
@@ -205,7 +245,6 @@ Respond ONLY with valid JSON.`;
         };
       }
 
-      // Generate actions using the Python backend
       const actions = await automateService.generateActions(objective);
       
       if (actions.length === 0) {
@@ -216,7 +255,6 @@ Respond ONLY with valid JSON.`;
         };
       }
 
-      // Execute the actions
       const result = await automateService.executeActions({
         actions,
         objective
@@ -282,7 +320,6 @@ Respond ONLY with valid JSON.`;
         };
       }
 
-      // Check Spotify usage limits before attempting to play
       const canUse = await subscriptionService.canUseFeature(user.id, 'spotify');
       if (!canUse) {
         const [subscription, usage] = await Promise.all([
@@ -317,7 +354,6 @@ Respond ONLY with valid JSON.`;
         };
       }
 
-      // Search for track
       const query = song ? `${song} ${artist}` : artist;
       const track = await spotifyService.searchTrack(query);
       
@@ -329,7 +365,28 @@ Respond ONLY with valid JSON.`;
         };
       }
 
-      // Attempt to play track
+      // Try Web Playback SDK first for Premium users
+      const profile = await spotifyService.getUserProfile();
+      if (profile.product === 'premium') {
+        try {
+          await spotifyWebPlaybackService.initializePlayer();
+          const webPlayResult = await spotifyWebPlaybackService.playTrack(track.uri);
+          
+          if (webPlayResult.success) {
+            await subscriptionService.incrementUsage(user.id, 'spotify');
+            return {
+              success: true,
+              message: `Now playing "${track.name}" by ${track.artist} on your browser!`,
+              requiresTTS: true,
+              data: { track }
+            };
+          }
+        } catch (error) {
+          console.log('Web playback failed, falling back to regular API:', error);
+        }
+      }
+
+      // Fallback to regular Spotify API
       const playResult = await spotifyService.playTrack(track.uri);
       
       if (!playResult.success) {
@@ -368,7 +425,6 @@ Respond ONLY with valid JSON.`;
         }
       }
       
-      // Increment Spotify usage after successful play
       await subscriptionService.incrementUsage(user.id, 'spotify');
       
       return {
@@ -399,14 +455,24 @@ Respond ONLY with valid JSON.`;
         };
       }
 
-      const profile = await spotifyService.getUserProfile();
+      const spotifyData = await spotifyService.getStoredSpotifyData();
+      const profile = spotifyData.profile;
+      
+      if (!profile) {
+        return {
+          success: true,
+          message: "Spotify is connected but profile data is not available. Please try reconnecting.",
+          requiresTTS: true
+        };
+      }
+
       const devices = await spotifyService.getDevices();
       
       return {
         success: true,
-        message: `Spotify connected as ${profile.display_name}. ${devices.length} device(s) available.`,
+        message: `Spotify connected as ${profile.display_name}. You have ${spotifyData.playlists.length} playlists, ${spotifyData.artists.length} top artists, and ${devices.length} device(s) available.`,
         requiresTTS: true,
-        data: { profile, devices }
+        data: { profile, devices, ...spotifyData }
       };
     } catch (error) {
       return {
@@ -428,7 +494,6 @@ Respond ONLY with valid JSON.`;
         };
       }
 
-      // Get user profile
       const { data: profile } = await supabase
         .from('profiles')
         .select('name, last_greeted_at')
@@ -437,7 +502,6 @@ Respond ONLY with valid JSON.`;
 
       const userName = profile?.name || user.email?.split('@')[0] || 'there';
 
-      // Check if we should greet today
       const shouldGreet = await locationService.shouldGreetUser(user.id);
       
       if (!shouldGreet) {
@@ -448,11 +512,9 @@ Respond ONLY with valid JSON.`;
         };
       }
 
-      // Get user location for personalized greeting
       const locationData = await locationService.getUserLocation();
       const greeting = locationService.getGreeting(locationData.timezone, userName);
       
-      // Update last greeted
       await locationService.updateLastGreeted(user.id);
       
       const locationGreeting = `${greeting}! How are things in ${locationData.city}, ${locationData.country}?`;
@@ -496,7 +558,6 @@ Respond ONLY with valid JSON.`;
           break;
           
         default:
-          // General location info
           response = `You're currently in ${locationData.city}, ${locationData.country}. The local time is ${new Date().toLocaleString("en-US", { timeZone: locationData.timezone, hour: '2-digit', minute: '2-digit', hour12: true })}.`;
       }
       
@@ -544,7 +605,6 @@ Respond ONLY with valid JSON.`;
       };
     }
 
-    // Process the document using the existing documentService
     try {
       const result = await documentService.processDocument(documentId, action, question);
       
@@ -572,7 +632,6 @@ Respond ONLY with valid JSON.`;
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      // Get location data if available
       let locationData = null;
       try {
         locationData = await locationService.getUserLocation();

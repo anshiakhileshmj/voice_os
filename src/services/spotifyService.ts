@@ -1,3 +1,4 @@
+
 import { supabase } from '@/integrations/supabase/client';
 
 export interface SpotifyTokens {
@@ -35,20 +36,20 @@ export class SpotifyService {
     'user-read-email',
     'user-read-playback-state',
     'user-modify-playback-state',
-    'streaming'
+    'streaming',
+    'user-top-read',
+    'playlist-read-private',
+    'playlist-read-collaborative'
   ].join(' ');
 
   async initiateAuth(): Promise<void> {
     console.log('Initiating Spotify auth...');
     
-    // Clear any existing auth state first
     localStorage.removeItem('spotify_auth_state');
     
-    // Generate a cryptographically secure random state
     const state = this.generateSecureRandomString(128);
     console.log('Generated new state for auth:', state.substring(0, 20) + '...');
     
-    // Store state in localStorage with timestamp for cleanup
     const stateData = {
       state: state,
       timestamp: Date.now(),
@@ -73,7 +74,6 @@ export class SpotifyService {
     const authUrl = `${SpotifyService.SPOTIFY_AUTH_URL}?${params}`;
     console.log('Redirecting to Spotify with state:', state.substring(0, 20) + '...');
     
-    // Add a small delay to ensure localStorage is written
     setTimeout(() => {
       window.location.href = authUrl;
     }, 100);
@@ -83,7 +83,6 @@ export class SpotifyService {
     console.log('Handling callback with code:', code?.substring(0, 10) + '...', 'state:', state.substring(0, 20) + '...');
     
     try {
-      // Retrieve and validate stored state
       const storedStateJson = localStorage.getItem('spotify_auth_state');
       
       if (!storedStateJson) {
@@ -96,14 +95,12 @@ export class SpotifyService {
       console.log('Received state from Spotify:', state.substring(0, 20) + '...');
       console.log('States match:', state === stateData.state);
 
-      // Validate state parameter
       if (state !== stateData.state) {
         console.error('State mismatch - received:', state.substring(0, 20) + '...', 'expected:', stateData.state.substring(0, 20) + '...');
         localStorage.removeItem('spotify_auth_state');
         throw new Error('Authentication state mismatch. Please try connecting to Spotify again.');
       }
 
-      // Check if state is not too old (10 minutes max)
       if (Date.now() - stateData.timestamp > 10 * 60 * 1000) {
         console.error('State expired');
         localStorage.removeItem('spotify_auth_state');
@@ -112,7 +109,6 @@ export class SpotifyService {
 
       console.log('State validation successful, exchanging code for tokens...');
 
-      // Use Supabase client to call edge function
       const { data, error } = await supabase.functions.invoke('spotify-auth/token', {
         body: {
           code,
@@ -130,14 +126,15 @@ export class SpotifyService {
       
       await this.saveTokens(tokens);
       
-      // Clean up stored state
+      // Fetch and store user data after successful authentication
+      await this.fetchAndStoreUserData();
+      
       localStorage.removeItem('spotify_auth_state');
       
       console.log('Spotify authentication successful');
       return true;
     } catch (error) {
       console.error('Spotify callback error:', error);
-      // Always clean up state on error
       localStorage.removeItem('spotify_auth_state');
       return false;
     }
@@ -238,27 +235,22 @@ export class SpotifyService {
         return { success: false, error: 'Not authenticated' };
       }
 
-      // Check if user has premium
       const profile = await this.getUserProfile();
       if (profile.product !== 'premium') {
         return { success: false, error: 'premium_required' };
       }
 
-      // Get devices
       const devices = await this.getDevices();
       
       if (devices.length === 0) {
         return { success: false, error: 'no_devices' };
       }
 
-      // Find active device or use the first available device
       let targetDevice = devices.find(d => d.is_active);
       
       if (!targetDevice) {
         targetDevice = devices[0];
-        // Transfer playback to the first available device
         await this.transferPlayback(targetDevice.id);
-        // Wait a bit for the transfer to complete
         await new Promise(resolve => setTimeout(resolve, 1000));
       }
 
@@ -301,11 +293,202 @@ export class SpotifyService {
     }
   }
 
-  private async getValidAccessToken(): Promise<string | null> {
+  async fetchAndStoreUserData(): Promise<void> {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      console.log('Fetching and storing Spotify user data...');
+
+      // Get user profile
+      const profile = await this.getUserProfile();
+      
+      // Store user profile
+      const { error: profileError } = await supabase
+        .from('spotify_profiles')
+        .upsert({
+          user_id: user.id,
+          spotify_user_id: profile.id,
+          display_name: profile.display_name,
+          email: profile.email,
+          country: profile.country,
+          product: profile.product,
+          updated_at: new Date().toISOString()
+        });
+
+      if (profileError) {
+        console.error('Error storing Spotify profile:', profileError);
+      }
+
+      // Fetch and store playlists
+      await this.fetchAndStorePlaylists();
+      
+      // Fetch and store top artists
+      await this.fetchAndStoreTopArtists();
+      
+      // Fetch and store top tracks
+      await this.fetchAndStoreTopTracks();
+
+      console.log('Spotify user data stored successfully');
+    } catch (error) {
+      console.error('Error fetching and storing Spotify data:', error);
+    }
+  }
+
+  private async fetchAndStorePlaylists(): Promise<void> {
+    try {
+      const accessToken = await this.getValidAccessToken();
+      if (!accessToken) return;
+
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const response = await fetch('https://api.spotify.com/v1/me/playlists?limit=50', {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+
+      if (!response.ok) return;
+
+      const data = await response.json();
+      const playlists = data.items || [];
+
+      for (const playlist of playlists) {
+        const { error } = await supabase
+          .from('spotify_playlists')
+          .upsert({
+            user_id: user.id,
+            spotify_playlist_id: playlist.id,
+            name: playlist.name,
+            description: playlist.description,
+            track_count: playlist.tracks.total,
+            is_public: playlist.public,
+            is_collaborative: playlist.collaborative,
+            owner_id: playlist.owner.id,
+            updated_at: new Date().toISOString()
+          });
+
+        if (error) {
+          console.error('Error storing playlist:', error);
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching playlists:', error);
+    }
+  }
+
+  private async fetchAndStoreTopArtists(): Promise<void> {
+    try {
+      const accessToken = await this.getValidAccessToken();
+      if (!accessToken) return;
+
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const response = await fetch('https://api.spotify.com/v1/me/top/artists?limit=50', {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+
+      if (!response.ok) return;
+
+      const data = await response.json();
+      const artists = data.items || [];
+
+      for (const artist of artists) {
+        const { error } = await supabase
+          .from('spotify_artists')
+          .upsert({
+            user_id: user.id,
+            spotify_artist_id: artist.id,
+            name: artist.name,
+            genres: artist.genres,
+            popularity: artist.popularity,
+            followers_count: artist.followers.total,
+            image_url: artist.images[0]?.url
+          });
+
+        if (error) {
+          console.error('Error storing artist:', error);
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching top artists:', error);
+    }
+  }
+
+  private async fetchAndStoreTopTracks(): Promise<void> {
+    try {
+      const accessToken = await this.getValidAccessToken();
+      if (!accessToken) return;
+
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const response = await fetch('https://api.spotify.com/v1/me/top/tracks?limit=50', {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+
+      if (!response.ok) return;
+
+      const data = await response.json();
+      const tracks = data.items || [];
+
+      for (const track of tracks) {
+        const { error } = await supabase
+          .from('spotify_tracks')
+          .upsert({
+            user_id: user.id,
+            spotify_track_id: track.id,
+            name: track.name,
+            artist_names: track.artists.map((a: any) => a.name).join(', '),
+            album_name: track.album.name,
+            duration_ms: track.duration_ms,
+            popularity: track.popularity,
+            preview_url: track.preview_url,
+            image_url: track.album.images[0]?.url
+          });
+
+        if (error) {
+          console.error('Error storing track:', error);
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching top tracks:', error);
+    }
+  }
+
+  async getStoredSpotifyData(): Promise<{
+    profile: any;
+    playlists: any[];
+    artists: any[];
+    tracks: any[];
+  }> {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return { profile: null, playlists: [], artists: [], tracks: [] };
+
+      const [profileResult, playlistsResult, artistsResult, tracksResult] = await Promise.all([
+        supabase.from('spotify_profiles').select('*').eq('user_id', user.id).single(),
+        supabase.from('spotify_playlists').select('*').eq('user_id', user.id).limit(20),
+        supabase.from('spotify_artists').select('*').eq('user_id', user.id).limit(20),
+        supabase.from('spotify_tracks').select('*').eq('user_id', user.id).limit(20)
+      ]);
+
+      return {
+        profile: profileResult.data,
+        playlists: playlistsResult.data || [],
+        artists: artistsResult.data || [],
+        tracks: tracksResult.data || []
+      };
+    } catch (error) {
+      console.error('Error getting stored Spotify data:', error);
+      return { profile: null, playlists: [], artists: [], tracks: [] };
+    }
+  }
+
+  async getValidAccessToken(): Promise<string | null> {
     const tokens = await this.getTokens();
     if (!tokens) return null;
 
-    // Check if token is expired (with 1 minute buffer)
     if (Date.now() >= (tokens.expires_at - 60000)) {
       console.log('Token expired, refreshing...');
       const refreshedTokens = await this.refreshTokens(tokens.refresh_token);
@@ -317,11 +500,10 @@ export class SpotifyService {
     return tokens.access_token;
   }
 
-  private async refreshTokens(refreshToken: string): Promise<SpotifyTokens | null> {
+  async refreshTokens(refreshToken: string): Promise<SpotifyTokens | null> {
     try {
       console.log('Refreshing tokens...');
       
-      // Use Supabase client to call edge function
       const { data, error } = await supabase.functions.invoke('spotify-auth/refresh', {
         body: { refresh_token: refreshToken },
       });
@@ -339,16 +521,15 @@ export class SpotifyService {
     }
   }
 
-  private async saveTokens(tokens: SpotifyTokens): Promise<void> {
+  async saveTokens(tokens: SpotifyTokens): Promise<void> {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error('User not authenticated');
 
-    // Store in localStorage for immediate access
     localStorage.setItem('spotify_tokens', JSON.stringify(tokens));
     console.log('Tokens saved to localStorage');
   }
 
-  private async getTokens(): Promise<SpotifyTokens | null> {
+  async getTokens(): Promise<SpotifyTokens | null> {
     const tokensStr = localStorage.getItem('spotify_tokens');
     if (!tokensStr) return null;
 
@@ -362,12 +543,10 @@ export class SpotifyService {
 
   private async getClientId(): Promise<string> {
     try {
-      // Use Supabase client to call edge function
       const { data, error } = await supabase.functions.invoke('spotify-auth/client-id');
       
       if (error || !data?.client_id) {
         console.warn('Failed to get client ID from edge function:', error);
-        // Fallback to hardcoded value
         return 'b9cb88208a414f018feac12ebd9821e3';
       }
       

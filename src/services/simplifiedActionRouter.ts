@@ -1,7 +1,9 @@
+
 import { streamingTTSService } from './streamingTTSService';
 import { languageAwareLLMService } from './languageAwareLLMService';
 import { streamingLLMService } from './streamingLLMService';
 import { spotifyService } from './spotifyService';
+import { spotifyWebPlaybackService } from './spotifyWebPlaybackService';
 import { automateService } from './automateService';
 
 export interface ConversationCallbacks {
@@ -15,14 +17,13 @@ export interface ConversationCallbacks {
 export class SimplifiedActionRouter {
   private isAutomateEnabled = false;
   private currentResponse = '';
-  private selectedVoiceId = 'english_us_male'; // Fixed to English US Male
+  private selectedVoiceId = 'english_us_male';
 
   setAutomateEnabled(enabled: boolean) {
     this.isAutomateEnabled = enabled;
   }
 
   setSelectedVoice(voiceId: string) {
-    // Voice is now fixed to english_us_male, but keeping method for compatibility
     this.selectedVoiceId = 'english_us_male';
     console.log('Voice is permanently set to:', this.selectedVoiceId);
   }
@@ -34,7 +35,6 @@ export class SimplifiedActionRouter {
     if (!userInput.trim()) return;
 
     try {
-      // Quick check for specific actions before going to LLM
       const quickAction = await this.handleQuickActions(userInput);
       if (quickAction) {
         callbacks.onLLMComplete(quickAction.message);
@@ -44,11 +44,12 @@ export class SimplifiedActionRouter {
         return;
       }
 
-      // Reset current response
       this.currentResponse = '';
 
-      // Stream language-aware LLM response
-      await languageAwareLLMService.generateLanguageAwareResponse(userInput, {
+      // Enhance user input with Spotify context if connected
+      const enhancedInput = await this.enhanceWithSpotifyContext(userInput);
+
+      await languageAwareLLMService.generateLanguageAwareResponse(enhancedInput, {
         voiceId: this.selectedVoiceId,
         onChunk: (chunk: string) => {
           this.currentResponse += chunk;
@@ -58,7 +59,6 @@ export class SimplifiedActionRouter {
           this.currentResponse = fullResponse;
           callbacks.onLLMComplete(fullResponse);
           
-          // Start TTS immediately after LLM completes
           this.handleTTS(fullResponse, callbacks);
         },
         onError: callbacks.onError
@@ -70,13 +70,58 @@ export class SimplifiedActionRouter {
     }
   }
 
+  private async enhanceWithSpotifyContext(userInput: string): Promise<string> {
+    try {
+      const isConnected = await spotifyService.isConnected();
+      if (!isConnected) {
+        return userInput;
+      }
+
+      const input = userInput.toLowerCase();
+      
+      // Check if the user is asking about their Spotify data
+      if (input.includes('my name') || input.includes('spotify') || 
+          input.includes('playlist') || input.includes('favorite') || 
+          input.includes('top') || input.includes('music')) {
+        
+        const spotifyData = await spotifyService.getStoredSpotifyData();
+        
+        let context = `User's Spotify Information:\n`;
+        
+        if (spotifyData.profile) {
+          context += `- Name: ${spotifyData.profile.display_name || 'Not available'}\n`;
+          context += `- Country: ${spotifyData.profile.country || 'Not available'}\n`;
+          context += `- Account Type: ${spotifyData.profile.product || 'Not available'}\n`;
+        }
+        
+        if (spotifyData.playlists.length > 0) {
+          context += `- Playlists (${spotifyData.playlists.length}): ${spotifyData.playlists.slice(0, 5).map(p => p.name).join(', ')}\n`;
+        }
+        
+        if (spotifyData.artists.length > 0) {
+          context += `- Top Artists: ${spotifyData.artists.slice(0, 5).map(a => a.name).join(', ')}\n`;
+        }
+        
+        if (spotifyData.tracks.length > 0) {
+          context += `- Top Tracks: ${spotifyData.tracks.slice(0, 5).map(t => `${t.name} by ${t.artist_names}`).join(', ')}\n`;
+        }
+        
+        return `${context}\nUser Question: ${userInput}`;
+      }
+      
+      return userInput;
+    } catch (error) {
+      console.error('Error enhancing with Spotify context:', error);
+      return userInput;
+    }
+  }
+
   private async handleQuickActions(userInput: string): Promise<{message: string, speak: boolean, data?: any} | null> {
     const input = userInput.toLowerCase();
 
     // Spotify commands
     if (input.includes('play') && (input.includes('song') || input.includes('music') || input.includes('spotify'))) {
       try {
-        // Extract song name from input and search/play
         const songQuery = userInput.replace(/play|song|music|spotify/gi, '').trim();
         const track = await spotifyService.searchTrack(songQuery);
         
@@ -84,6 +129,22 @@ export class SimplifiedActionRouter {
           return { message: "I couldn't find that song. Could you try again?", speak: true };
         }
 
+        // Try to use Web Playback SDK first if available
+        const profile = await spotifyService.getUserProfile();
+        if (profile.product === 'premium') {
+          try {
+            await spotifyWebPlaybackService.initializePlayer();
+            const webPlayResult = await spotifyWebPlaybackService.playTrack(track.uri);
+            
+            if (webPlayResult.success) {
+              return { message: `Playing ${track.name} by ${track.artist} on your browser`, speak: true };
+            }
+          } catch (error) {
+            console.log('Web playback failed, falling back to regular API:', error);
+          }
+        }
+
+        // Fallback to regular Spotify API
         const playResult = await spotifyService.playTrack(track.uri);
         
         if (!playResult.success) {
