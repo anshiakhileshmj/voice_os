@@ -80,14 +80,14 @@ export const useEnhancedSpeechRecognition = (): EnhancedSpeechRecognitionHook =>
     recognition.continuous = true;
     recognition.interimResults = true;
     recognition.lang = 'en-US';
-    recognition.maxAlternatives = 1;
 
-    recognition.onstart = () => {
+    // Use addEventListener instead of direct property assignment for better compatibility
+    recognition.addEventListener('start', () => {
       console.log('Enhanced STT: Recognition started');
       setIsRecording(true);
-    };
+    });
 
-    recognition.onresult = (event: any) => {
+    recognition.addEventListener('result', (event: any) => {
       let finalTranscript = '';
       let interimTranscript = '';
       let maxConfidence = 0;
@@ -135,9 +135,9 @@ export const useEnhancedSpeechRecognition = (): EnhancedSpeechRecognitionHook =>
           }
         }
       }
-    };
+    });
 
-    recognition.onerror = (event: any) => {
+    recognition.addEventListener('error', (event: any) => {
       console.error('Enhanced STT: Recognition error:', event.error);
       
       // Handle different error types gracefully
@@ -171,9 +171,9 @@ export const useEnhancedSpeechRecognition = (): EnhancedSpeechRecognitionHook =>
         default:
           console.warn('Enhanced STT: Unhandled error:', event.error);
       }
-    };
+    });
 
-    recognition.onend = () => {
+    recognition.addEventListener('end', () => {
       console.log('Enhanced STT: Recognition ended');
       setIsRecording(false);
       
@@ -191,7 +191,7 @@ export const useEnhancedSpeechRecognition = (): EnhancedSpeechRecognitionHook =>
           }
         }, 500);
       }
-    };
+    });
 
     return recognition;
   }, [toast, handleSpeechStart, handleSpeechEnd]);
