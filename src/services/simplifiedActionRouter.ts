@@ -45,7 +45,7 @@ export class SimplifiedActionRouter {
 
       this.currentResponse = '';
 
-      // Enhance user input with Spotify context if connected
+      // Only enhance with Spotify context if user is asking Spotify-related questions
       const enhancedInput = await this.enhanceWithSpotifyContext(userInput);
 
       await languageAwareLLMService.generateLanguageAwareResponse(enhancedInput, {
@@ -79,14 +79,19 @@ export class SimplifiedActionRouter {
 
       const input = userInput.toLowerCase();
       
-      // Check if the user is asking about their Spotify data
-      if (input.includes('spotify') || input.includes('playlist') || 
-          input.includes('favorite') || input.includes('top') || 
-          input.includes('music') || input.includes('artist') ||
-          input.includes('song') || input.includes('track') ||
-          input.includes('premium') || input.includes('subscription') ||
-          input.includes('my name') || input.includes('account')) {
-        
+      // More specific detection - only inject context for explicit Spotify queries
+      const spotifyKeywords = [
+        'spotify', 'playlist', 'music', 'song', 'track', 'artist', 'album',
+        'premium', 'subscription', 'account', 'play ', 'playing', 'listen'
+      ];
+      
+      const isSpotifyRelated = spotifyKeywords.some(keyword => input.includes(keyword));
+      
+      // Also check for questions about user's data that might relate to Spotify
+      const personalDataKeywords = ['my name', 'who am i', 'my account', 'my profile'];
+      const isPersonalDataQuery = personalDataKeywords.some(keyword => input.includes(keyword));
+      
+      if (isSpotifyRelated || isPersonalDataQuery) {
         let context = `User's Spotify Account Information:\n`;
         
         if (spotifyInfo.profile) {
@@ -124,7 +129,6 @@ export class SimplifiedActionRouter {
           }
         }
 
-        // Add note about premium features
         if (!spotifyInfo.subscription?.isPremium) {
           context += `- Note: User has free Spotify account, so playback control is limited\n`;
         }

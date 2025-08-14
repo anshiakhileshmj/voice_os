@@ -25,9 +25,13 @@ export class StreamingLLMService {
       return;
     }
 
-    // Add user message to history
-    const userMsg: StreamingMessage = { role: 'user', content: userMessage.trim() };
-    this.conversationHistory.push(userMsg);
+    // Add system context for better time and location awareness
+    const systemContext = this.getSystemContext();
+    const messages = [
+      { role: 'system' as const, content: systemContext },
+      ...this.conversationHistory.slice(-6), // Keep fewer messages for better performance
+      { role: 'user' as const, content: userMessage.trim() }
+    ];
 
     try {
       console.log('Starting streaming LLM response for:', userMessage.substring(0, 50) + '...');
@@ -52,7 +56,9 @@ export class StreamingLLMService {
         },
         body: JSON.stringify({
           message: userMessage.trim(),
-          conversationHistory: this.conversationHistory.slice(-8), // Keep last 8 messages
+          conversationHistory: messages,
+          useOpenRouter: true, // Flag to use OpenRouter instead
+          model: 'meta-llama/llama-3.2-3b-instruct:free' // Fast, free model with good reasoning
         }),
         signal: this.abortController.signal,
       });
@@ -91,15 +97,15 @@ export class StreamingLLMService {
               }
             } catch (e) {
               // Skip malformed JSON
-              console.warn('Skipped malformed chunk:', data);
+              console.warn('Skipped malformed chunk:', data.substring(0, 50));
             }
           }
         }
       }
 
-      // Add assistant response to history
-      const assistantMsg: StreamingMessage = { role: 'assistant', content: fullResponse };
-      this.conversationHistory.push(assistantMsg);
+      // Add messages to history
+      this.conversationHistory.push({ role: 'user', content: userMessage.trim() });
+      this.conversationHistory.push({ role: 'assistant', content: fullResponse });
 
       callbacks.onComplete(fullResponse);
       
@@ -112,6 +118,34 @@ export class StreamingLLMService {
       console.error('Streaming LLM service error:', error);
       callbacks.onError(error instanceof Error ? error : new Error('Unknown streaming error'));
     }
+  }
+
+  private getSystemContext(): string {
+    const currentDate = new Date();
+    const currentTime = currentDate.toLocaleString('en-US', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      timeZoneName: 'short'
+    });
+
+    return `You are MJAK, a helpful AI assistant. 
+
+Current date and time: ${currentTime}
+
+Important instructions:
+- You can provide current time and date information as shown above
+- For location-based queries, you can help with general location services
+- Only discuss Spotify-related topics when the user explicitly asks about Spotify, music, playlists, or audio content
+- Be conversational and helpful
+- Keep responses concise but informative
+- If asked about your name, you are MJAK
+
+Remember: You have access to current time information and should use it to answer time-related questions accurately.`;
   }
 
   stopStreaming() {
