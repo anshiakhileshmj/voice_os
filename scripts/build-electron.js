@@ -48,11 +48,15 @@ try {
     });
   }
 
-  // Step 4: Build the Windows Electron app
+  // Step 4: Build the Windows Electron app with explicit platform flag
   console.log('⚡ Building Windows Electron executable...');
-  execSync('npx electron-builder --win', { 
+  execSync('npx electron-builder --win --x64 --ia32', { 
     stdio: 'inherit',
-    cwd: rootDir 
+    cwd: rootDir,
+    env: { 
+      ...process.env, 
+      CSC_IDENTITY_AUTO_DISCOVERY: 'false' // Disable code signing
+    }
   });
 
   console.log('✅ Windows Electron build completed successfully!');
