@@ -1,3 +1,4 @@
+
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useToast } from '@/hooks/use-toast';
 
@@ -19,15 +20,17 @@ export const useSpeechRecognition = (): SpeechRecognitionHook => {
   const retryCountRef = useRef(0);
   const maxRetries = 3;
   const { toast } = useToast();
+  
   // Tracks whether the user intends for recognition to be running
   const wantsRecognitionRef = useRef(false);
   // Prevents rapid duplicate start() calls that can trigger 'aborted'
   const isStartingRef = useRef(false);
   // Marks that stop was requested by us (not an error)
   const stoppedManuallyRef = useRef(false);
-  // Stores last error type
-  const lastErrorRef = useRef<string | null>(null);
-
+  // Prevents infinite restart loops
+  const restartTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  // Track consecutive aborted errors
+  const consecutiveAbortsRef = useRef(0);
 
   const requestMicrophonePermission = useCallback(async () => {
     try {
@@ -47,16 +50,37 @@ export const useSpeechRecognition = (): SpeechRecognitionHook => {
   }, []);
 
   const checkSpeechSupport = useCallback(() => {
-    // Only support when Web Speech API is available
     return webSpeechAvailable();
   }, [webSpeechAvailable]);
 
+  const cleanupRecognition = useCallback(() => {
+    if (restartTimeoutRef.current) {
+      clearTimeout(restartTimeoutRef.current);
+      restartTimeoutRef.current = null;
+    }
+    
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.removeEventListener('start', () => {});
+        recognitionRef.current.removeEventListener('result', () => {});
+        recognitionRef.current.removeEventListener('error', () => {});
+        recognitionRef.current.removeEventListener('end', () => {});
+        recognitionRef.current.stop();
+      } catch (error) {
+        console.error('Error cleaning up recognition:', error);
+      }
+      recognitionRef.current = null;
+    }
+  }, []);
+
   const initializeSpeechRecognition = useCallback(() => {
-    // Only initialize Web Speech when actually available
     if (!webSpeechAvailable()) {
       setIsSupported(false);
       return;
     }
+
+    // Clean up any existing recognition
+    cleanupRecognition();
 
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     recognitionRef.current = new SpeechRecognition();
@@ -65,14 +89,13 @@ export const useSpeechRecognition = (): SpeechRecognitionHook => {
       recognitionRef.current.continuous = true;
       recognitionRef.current.interimResults = true;
       recognitionRef.current.lang = 'en-US';
-      
-      // Remove maxAlternatives as it's not available on all implementations
 
       recognitionRef.current.addEventListener('start', () => {
         console.log('Speech recognition started');
         isStartingRef.current = false;
         setIsRecording(true);
         retryCountRef.current = 0;
+        consecutiveAbortsRef.current = 0;
       });
 
       recognitionRef.current.addEventListener('result', (event: any) => {
@@ -97,9 +120,7 @@ export const useSpeechRecognition = (): SpeechRecognitionHook => {
       });
 
       recognitionRef.current.addEventListener('error', (event: any) => {
-        // Any error means we are no longer in a starting phase
         isStartingRef.current = false;
-        lastErrorRef.current = event?.error ?? null;
         console.error('Speech recognition error:', event.error, event);
         
         let errorMessage = 'Speech recognition error occurred.';
@@ -108,39 +129,42 @@ export const useSpeechRecognition = (): SpeechRecognitionHook => {
         switch (event.error) {
           case 'network':
             errorMessage = 'Network error. Please check your internet connection.';
-            shouldRetry = true;
+            shouldRetry = retryCountRef.current < maxRetries;
             break;
           case 'not-allowed':
             errorMessage = 'Microphone access denied. Please allow microphone permissions in your browser settings.';
+            wantsRecognitionRef.current = false;
             break;
           case 'no-speech':
             errorMessage = 'No speech detected. Please try speaking again.';
-            shouldRetry = true;
+            shouldRetry = retryCountRef.current < maxRetries;
             break;
           case 'aborted':
-            // Benign in Chrome: often fired when start() is called while already starting/running
-            // or when stop() is invoked during startup. Treat as informational.
-            // Do not toast; optionally auto-restart if the user still wants it.
-            isStartingRef.current = false;
-            if (wantsRecognitionRef.current) {
-              setTimeout(() => {
-                if (recognitionRef.current && wantsRecognitionRef.current && !isStartingRef.current) {
-                  try {
-                    isStartingRef.current = true;
-                    console.log('Restarting after aborted');
-                    recognitionRef.current.start();
-                  } catch (error) {
-                    console.error('Restart after aborted failed:', error);
-                  } finally {
-                    // isStarting will be reset on 'start'
-                  }
-                }
-              }, 800);
+            consecutiveAbortsRef.current++;
+            
+            // If we have too many consecutive aborted errors, stop trying
+            if (consecutiveAbortsRef.current >= 3) {
+              console.warn('Too many consecutive aborted errors, stopping recognition');
+              wantsRecognitionRef.current = false;
+              setIsRecording(false);
+              setCurrentTranscript('');
+              toast({
+                title: "Speech Recognition Error",
+                description: "Speech recognition is having issues. Please try again.",
+                variant: "destructive"
+              });
+              return;
+            }
+            
+            // For aborted errors, only restart if user still wants recognition and we're not already starting
+            if (wantsRecognitionRef.current && !isStartingRef.current) {
+              shouldRetry = true;
             } else {
               setIsRecording(false);
               setCurrentTranscript('');
             }
-            return; // Exit early; don't show toast
+            // Don't show toast for aborted errors as they're often benign
+            return;
           case 'audio-capture':
             errorMessage = 'Audio capture failed. Please check your microphone connection.';
             break;
@@ -153,29 +177,39 @@ export const useSpeechRecognition = (): SpeechRecognitionHook => {
         }
 
         // Auto-retry for certain errors
-        if (shouldRetry && (event.error === 'network' || event.error === 'no-speech')) {
+        if (shouldRetry) {
           retryCountRef.current++;
-          setTimeout(() => {
-            if (recognitionRef.current && isRecording) {
+          
+          // Clear any existing restart timeout
+          if (restartTimeoutRef.current) {
+            clearTimeout(restartTimeoutRef.current);
+          }
+          
+          restartTimeoutRef.current = setTimeout(() => {
+            if (recognitionRef.current && wantsRecognitionRef.current && !isStartingRef.current) {
               try {
                 console.log(`Retrying speech recognition (attempt ${retryCountRef.current})`);
+                isStartingRef.current = true;
                 recognitionRef.current.start();
               } catch (error) {
                 console.error('Retry failed:', error);
                 setIsRecording(false);
+                isStartingRef.current = false;
               }
             }
-          }, 1000);
+          }, 1000 + (retryCountRef.current * 500)); // Increasing delay for retries
           return;
         }
 
-        toast({
-          title: "Speech Recognition Error",
-          description: errorMessage,
-          variant: "destructive"
-        });
+        // Show error toast for non-aborted errors
+        if (event.error !== 'aborted') {
+          toast({
+            title: "Speech Recognition Error",
+            description: errorMessage,
+            variant: "destructive"
+          });
+        }
         
-        // If it's a hard error, stop trying unless user starts again
         wantsRecognitionRef.current = false;
         setIsRecording(false);
         setCurrentTranscript('');
@@ -185,21 +219,23 @@ export const useSpeechRecognition = (): SpeechRecognitionHook => {
         console.log('Speech recognition ended');
         isStartingRef.current = false;
         
-        // If we stopped manually, just reset state.
+        // If we stopped manually, just reset state
         if (stoppedManuallyRef.current || !wantsRecognitionRef.current) {
           stoppedManuallyRef.current = false;
           setIsRecording(false);
           setCurrentTranscript('');
-          // Force a fresh instance next time to avoid Chrome edge-cases
-          try {
-            recognitionRef.current = null;
-          } catch {}
+          cleanupRecognition();
           return;
         }
 
-        // Auto-restart if the user still wants recognition
-        if (wantsRecognitionRef.current && retryCountRef.current < maxRetries) {
-          setTimeout(() => {
+        // Auto-restart if the user still wants recognition and we haven't exceeded retries
+        if (wantsRecognitionRef.current && retryCountRef.current < maxRetries && consecutiveAbortsRef.current < 3) {
+          // Clear any existing restart timeout
+          if (restartTimeoutRef.current) {
+            clearTimeout(restartTimeoutRef.current);
+          }
+          
+          restartTimeoutRef.current = setTimeout(() => {
             if (recognitionRef.current && wantsRecognitionRef.current && !isStartingRef.current) {
               try {
                 isStartingRef.current = true;
@@ -208,6 +244,7 @@ export const useSpeechRecognition = (): SpeechRecognitionHook => {
               } catch (error) {
                 console.error('Auto-restart failed:', error);
                 setIsRecording(false);
+                isStartingRef.current = false;
               }
             }
           }, 800);
@@ -217,9 +254,7 @@ export const useSpeechRecognition = (): SpeechRecognitionHook => {
         }
       });
     }
-  }, [toast, webSpeechAvailable]);
-
-  // Removed custom fallback STT; Web Speech API only
+  }, [toast, webSpeechAvailable, cleanupRecognition]);
 
   useEffect(() => {
     const supported = checkSpeechSupport();
@@ -230,17 +265,17 @@ export const useSpeechRecognition = (): SpeechRecognitionHook => {
     }
 
     return () => {
-      if (recognitionRef.current) {
-        try {
-          recognitionRef.current.stop();
-        } catch (error) {
-          console.error('Error stopping recognition on cleanup:', error);
-        }
-      }
+      cleanupRecognition();
     };
-  }, [toast, initializeSpeechRecognition]);
+  }, [initializeSpeechRecognition, checkSpeechSupport, webSpeechAvailable, cleanupRecognition]);
 
   const startRecording = useCallback(async () => {
+    // Prevent multiple simultaneous starts
+    if (isStartingRef.current || isRecording) {
+      console.log('Already starting or recording, ignoring start request');
+      return;
+    }
+
     // Request microphone permission first
     const hasPermission = await requestMicrophonePermission();
     if (!hasPermission) {
@@ -252,43 +287,63 @@ export const useSpeechRecognition = (): SpeechRecognitionHook => {
       return;
     }
 
-    // Use Web Speech API only
     if (!webSpeechAvailable()) {
-      toast({ title: 'Speech Not Supported', description: 'This browser does not support Web Speech API.', variant: 'destructive' });
+      toast({ 
+        title: 'Speech Not Supported', 
+        description: 'This browser does not support Web Speech API.', 
+        variant: 'destructive' 
+      });
       return;
     }
 
-    if (!recognitionRef.current) {
-      initializeSpeechRecognition();
-    }
+    // Initialize fresh recognition instance
+    initializeSpeechRecognition();
     
     try {
-      if (isStartingRef.current || isRecording) return;
       wantsRecognitionRef.current = true;
       isStartingRef.current = true;
       retryCountRef.current = 0;
-      // Small delay helps after immediate stop/end cycles in Chrome
+      consecutiveAbortsRef.current = 0;
+      
+      // Small delay to ensure clean state
       await new Promise(resolve => setTimeout(resolve, 100));
-      recognitionRef.current?.start();
-      toast({ title: "Recording Started", description: "Speak naturally. I'm listening and will respond in real-time." });
+      
+      if (recognitionRef.current) {
+        recognitionRef.current.start();
+        toast({ 
+          title: "Recording Started", 
+          description: "Speak naturally. I'm listening and will respond in real-time." 
+        });
+      }
     } catch (error) {
       console.error('Error starting recognition:', error);
       setIsRecording(false);
+      isStartingRef.current = false;
+      wantsRecognitionRef.current = false;
     }
-  }, [isSupported, toast, requestMicrophonePermission, webSpeechAvailable, isRecording, initializeSpeechRecognition]);
+  }, [isRecording, toast, requestMicrophonePermission, webSpeechAvailable, initializeSpeechRecognition]);
 
   const stopRecording = useCallback(() => {
-    if (!recognitionRef.current) return;
-    try {
-      wantsRecognitionRef.current = false;
-      stoppedManuallyRef.current = true;
-      isStartingRef.current = false;
-      recognitionRef.current.stop();
-      setIsRecording(false);
-      setCurrentTranscript('');
-    } catch (error) {
-      console.error('Error stopping recognition:', error);
+    wantsRecognitionRef.current = false;
+    stoppedManuallyRef.current = true;
+    isStartingRef.current = false;
+    
+    // Clear any pending restart timeouts
+    if (restartTimeoutRef.current) {
+      clearTimeout(restartTimeoutRef.current);
+      restartTimeoutRef.current = null;
     }
+    
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.stop();
+      } catch (error) {
+        console.error('Error stopping recognition:', error);
+      }
+    }
+    
+    setIsRecording(false);
+    setCurrentTranscript('');
   }, []);
 
   const onResult = useCallback((callback: (transcript: string) => void) => {
