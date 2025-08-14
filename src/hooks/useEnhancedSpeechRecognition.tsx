@@ -1,6 +1,7 @@
-
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useToast } from '@/hooks/use-toast';
+import { audioProcessingService } from '@/services/audioProcessingService';
+import { conversationContextService } from '@/services/conversationContextService';
 
 interface EnhancedSpeechRecognitionHook {
   isRecording: boolean;
@@ -11,9 +12,11 @@ interface EnhancedSpeechRecognitionHook {
   startContinuousRecognition: () => void;
   stopContinuousRecognition: () => void;
   onPartialResult: (callback: (transcript: string) => void) => void;
-  onFinalResult: (callback: (transcript: string, confidence: number) => void) => void;
+  onFinalResult: (callback: (transcript: string, confidence: number, turnId: string) => void) => void;
   onSpeechStart: (callback: () => void) => void;
   onSpeechEnd: (callback: () => void) => void;
+  getConversationStats: () => any;
+  resetConversation: () => void;
 }
 
 export const useEnhancedSpeechRecognition = (): EnhancedSpeechRecognitionHook => {
@@ -25,7 +28,7 @@ export const useEnhancedSpeechRecognition = (): EnhancedSpeechRecognitionHook =>
   
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const partialCallbackRef = useRef<((transcript: string) => void) | null>(null);
-  const finalCallbackRef = useRef<((transcript: string, confidence: number) => void) | null>(null);
+  const finalCallbackRef = useRef<((transcript: string, confidence: number, turnId: string) => void) | null>(null);
   const speechStartCallbackRef = useRef<(() => void) | null>(null);
   const speechEndCallbackRef = useRef<(() => void) | null>(null);
   
@@ -34,6 +37,7 @@ export const useEnhancedSpeechRecognition = (): EnhancedSpeechRecognitionHook =>
   const restartTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastPartialTranscriptRef = useRef('');
   const speechStartedRef = useRef(false);
+  const currentTurnIdRef = useRef<string>('');
   
   const { toast } = useToast();
 
@@ -51,7 +55,11 @@ export const useEnhancedSpeechRecognition = (): EnhancedSpeechRecognitionHook =>
   const handleSpeechStart = useCallback(() => {
     if (!speechStartedRef.current) {
       speechStartedRef.current = true;
-      console.log('Enhanced STT: Speech started');
+      console.log('Enhanced STT: Speech started with audio processing');
+      
+      // Start audio processing
+      audioProcessingService.startProcessing();
+      
       if (speechStartCallbackRef.current) {
         speechStartCallbackRef.current();
       }
@@ -62,6 +70,10 @@ export const useEnhancedSpeechRecognition = (): EnhancedSpeechRecognitionHook =>
     if (speechStartedRef.current) {
       speechStartedRef.current = false;
       console.log('Enhanced STT: Speech ended');
+      
+      // Stop audio processing
+      audioProcessingService.stopProcessing();
+      
       if (speechEndCallbackRef.current) {
         speechEndCallbackRef.current();
       }
@@ -83,7 +95,7 @@ export const useEnhancedSpeechRecognition = (): EnhancedSpeechRecognitionHook =>
 
     // Use addEventListener instead of direct property assignment for better compatibility
     recognition.addEventListener('start', () => {
-      console.log('Enhanced STT: Recognition started');
+      console.log('Enhanced STT: Recognition started with context awareness');
       setIsRecording(true);
     });
 
@@ -104,10 +116,14 @@ export const useEnhancedSpeechRecognition = (): EnhancedSpeechRecognitionHook =>
           // Handle speech end detection
           handleSpeechEnd();
           
-          // Send final result
+          // Finalize conversation turn
+          const turnId = conversationContextService.finalizeTurn(finalTranscript.trim(), maxConfidence);
+          currentTurnIdRef.current = turnId;
+          
+          // Send final result with turn ID
           if (finalTranscript.trim() && finalCallbackRef.current) {
-            console.log('Enhanced STT: Final result:', finalTranscript.trim());
-            finalCallbackRef.current(finalTranscript.trim(), maxConfidence);
+            console.log('Enhanced STT: Final result with context:', finalTranscript.trim());
+            finalCallbackRef.current(finalTranscript.trim(), maxConfidence, turnId);
             setCurrentTranscript(finalTranscript.trim());
             setConfidence(maxConfidence);
           }
@@ -123,13 +139,16 @@ export const useEnhancedSpeechRecognition = (): EnhancedSpeechRecognitionHook =>
             handleSpeechStart();
           }
           
-          // Send partial result if it's different from last one
+          // Update conversation context with partial result
           if (interimTranscript.trim() !== lastPartialTranscriptRef.current) {
             lastPartialTranscriptRef.current = interimTranscript.trim();
             setPartialTranscript(interimTranscript.trim());
             
+            // Add to conversation context
+            conversationContextService.addPartialTranscript(interimTranscript.trim(), currentConfidence);
+            
             if (partialCallbackRef.current && interimTranscript.trim()) {
-              console.log('Enhanced STT: Partial result:', interimTranscript.trim());
+              console.log('Enhanced STT: Streaming partial result:', interimTranscript.trim());
               partialCallbackRef.current(interimTranscript.trim());
             }
           }
@@ -202,7 +221,21 @@ export const useEnhancedSpeechRecognition = (): EnhancedSpeechRecognitionHook =>
       return;
     }
 
-    // Request microphone permission
+    try {
+      // Initialize audio processing service
+      await audioProcessingService.initialize((audioData: Float32Array) => {
+        // Audio chunks are being processed - could be used for additional analysis
+        console.log('Audio chunk processed:', audioData.length, 'samples');
+      });
+    } catch (error) {
+      console.error('Failed to initialize audio processing:', error);
+      toast({
+        title: "Audio Processing Failed",
+        description: "Could not initialize enhanced audio processing.",
+        variant: "destructive"
+      });
+    }
+
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       stream.getTracks().forEach(track => track.stop());
@@ -244,7 +277,7 @@ export const useEnhancedSpeechRecognition = (): EnhancedSpeechRecognitionHook =>
         recognitionRef.current.start();
         toast({
           title: "Enhanced Voice Recognition Started",
-          description: "Continuous listening mode activated. Speak naturally."
+          description: "Context-aware listening with audio processing active."
         });
       } catch (error) {
         console.error('Enhanced STT: Start failed:', error);
@@ -254,11 +287,14 @@ export const useEnhancedSpeechRecognition = (): EnhancedSpeechRecognitionHook =>
   }, [isSupported, toast, initializeRecognition]);
 
   const stopContinuousRecognition = useCallback(() => {
-    console.log('Enhanced STT: Stopping continuous recognition');
+    console.log('Enhanced STT: Stopping continuous recognition with cleanup');
     isActiveRef.current = false;
     speechStartedRef.current = false;
     
     clearTimeouts();
+    
+    // Cleanup audio processing
+    audioProcessingService.cleanup();
     
     if (recognitionRef.current) {
       try {
@@ -285,7 +321,7 @@ export const useEnhancedSpeechRecognition = (): EnhancedSpeechRecognitionHook =>
     partialCallbackRef.current = callback;
   }, []);
 
-  const onFinalResult = useCallback((callback: (transcript: string, confidence: number) => void) => {
+  const onFinalResult = useCallback((callback: (transcript: string, confidence: number, turnId: string) => void) => {
     finalCallbackRef.current = callback;
   }, []);
 
@@ -295,6 +331,17 @@ export const useEnhancedSpeechRecognition = (): EnhancedSpeechRecognitionHook =>
 
   const onSpeechEnd = useCallback((callback: () => void) => {
     speechEndCallbackRef.current = callback;
+  }, []);
+
+  const getConversationStats = useCallback(() => {
+    return conversationContextService.getSessionStats();
+  }, []);
+
+  const resetConversation = useCallback(() => {
+    conversationContextService.resetSession();
+    setCurrentTranscript('');
+    setPartialTranscript('');
+    console.log('Conversation context reset');
   }, []);
 
   return {
@@ -309,5 +356,7 @@ export const useEnhancedSpeechRecognition = (): EnhancedSpeechRecognitionHook =>
     onFinalResult,
     onSpeechStart,
     onSpeechEnd,
+    getConversationStats,
+    resetConversation,
   };
 };
