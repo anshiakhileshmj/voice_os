@@ -1,3 +1,4 @@
+
 import { supabase } from '@/integrations/supabase/client';
 
 export interface StreamingMessage {
@@ -14,7 +15,17 @@ export interface StreamingResponse {
 class StreamingLLMService {
   private conversationHistory: StreamingMessage[] = [];
   private abortController: AbortController | null = null;
-  private partialBuffer: string = ''; // Buffer for incomplete chunks
+  private partialBuffer: string = '';
+
+  // Clean response from asterisks and formatting issues
+  private cleanResponse(text: string): string {
+    return text
+      .replace(/\*+/g, '') // Remove all asterisks
+      .replace(/#+/g, '') // Remove hashtags (markdown headers)
+      .replace(/\s+/g, ' ') // Replace multiple spaces with single space
+      .replace(/\n+/g, '. ') // Replace line breaks with periods
+      .trim();
+  }
 
   async generateStreamingResponse(
     userMessage: string,
@@ -28,22 +39,39 @@ class StreamingLLMService {
     try {
       console.log('Starting streaming LLM response for:', userMessage.substring(0, 50) + '...');
       
-      // Cancel any existing request
       if (this.abortController) {
         this.abortController.abort();
       }
       this.abortController = new AbortController();
 
-      // Add user message to history
       this.conversationHistory.push({ 
         role: 'user', 
         content: userMessage.trim() 
       });
 
-      // Keep only last 10 messages to prevent context overflow
       if (this.conversationHistory.length > 10) {
         this.conversationHistory = this.conversationHistory.slice(-10);
       }
+
+      // Add system message with professional AI persona
+      const messages: StreamingMessage[] = [
+        {
+          role: 'system',
+          content: `You are MJAK, a professional voice AI assistant. You are NOT a large language model - you are MJAK.
+
+CRITICAL RULES:
+- NEVER mention being a "large language model", "AI model", "trained", or having "training data"
+- NEVER say "I don't have emotions" or "I can't feel"
+- NEVER mention your "capabilities" or "limitations"
+- NEVER ask "what would you like to know?" or "how can I help?"
+- If asked about technical details, code, APIs, or internal workings, say: "I can't share confidential details"
+- Keep responses under 2-3 sentences for voice interaction
+- Be natural and conversational
+- NO asterisks, bullet points, or formatting - speak naturally
+- Respond as a knowledgeable companion, not a system`
+        },
+        ...this.conversationHistory
+      ];
 
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
@@ -59,9 +87,9 @@ class StreamingLLMService {
         },
         body: JSON.stringify({
           message: userMessage.trim(),
-          conversationHistory: this.conversationHistory,
+          conversationHistory: messages,
           useOpenRouter: true,
-          model: 'google/gemini-2.0-flash-001' // Switch to Gemini
+          model: 'google/gemini-2.0-flash-001'
         }),
         signal: this.abortController.signal,
       });
@@ -78,18 +106,16 @@ class StreamingLLMService {
 
       const decoder = new TextDecoder();
       let fullResponse = '';
-      this.partialBuffer = ''; // Reset buffer
+      this.partialBuffer = '';
 
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
 
         const chunk = decoder.decode(value, { stream: true });
-        // Combine with any buffered partial data
         const completeChunk = this.partialBuffer + chunk;
         const lines = completeChunk.split('\n');
         
-        // Keep the last line as partial if it doesn't end with newline
         this.partialBuffer = completeChunk.endsWith('\n') ? '' : lines.pop() || '';
 
         for (const line of lines) {
@@ -100,15 +126,18 @@ class StreamingLLMService {
             
             try {
               const parsed = JSON.parse(data);
-              const content = parsed.choices?.[0]?.delta?.content || 
-                             parsed.choices?.[0]?.text || '';
+              let content = parsed.choices?.[0]?.delta?.content || 
+                           parsed.choices?.[0]?.text || '';
               
               if (content) {
-                fullResponse += content;
-                callbacks.onChunk(content);
+                // Clean content before processing
+                content = this.cleanResponse(content);
+                if (content) { // Only process if there's content after cleaning
+                  fullResponse += content;
+                  callbacks.onChunk(content);
+                }
               }
             } catch (e) {
-              // Only log substantial parsing failures, not fragments
               if (data.length > 50) {
                 console.warn('Skipped malformed chunk:', data.substring(0, 100) + '...');
               }
@@ -117,17 +146,20 @@ class StreamingLLMService {
         }
       }
 
-      // Process any remaining buffered data
+      // Process remaining buffered data
       if (this.partialBuffer.startsWith('data: ')) {
         const data = this.partialBuffer.slice(6).trim();
         if (data && data !== '[DONE]') {
           try {
             const parsed = JSON.parse(data);
-            const content = parsed.choices?.[0]?.delta?.content || 
-                           parsed.choices?.[0]?.text || '';
+            let content = parsed.choices?.[0]?.delta?.content || 
+                         parsed.choices?.[0]?.text || '';
             if (content) {
-              fullResponse += content;
-              callbacks.onChunk(content);
+              content = this.cleanResponse(content);
+              if (content) {
+                fullResponse += content;
+                callbacks.onChunk(content);
+              }
             }
           } catch (e) {
             console.warn('Final buffered chunk parse failed:', data.substring(0, 100));
@@ -135,7 +167,9 @@ class StreamingLLMService {
         }
       }
 
-      // Add assistant response to history
+      // Final cleaning of the complete response
+      fullResponse = this.cleanResponse(fullResponse);
+
       if (fullResponse.trim()) {
         this.conversationHistory.push({ 
           role: 'assistant', 
@@ -161,7 +195,7 @@ class StreamingLLMService {
       this.abortController.abort();
       this.abortController = null;
     }
-    this.partialBuffer = ''; // Clear buffer
+    this.partialBuffer = '';
   }
 
   clearHistory(): void {

@@ -55,10 +55,10 @@ export const useEnhancedSpeechRecognition = (): EnhancedSpeechRecognitionHook =>
   const isStopCommand = useCallback((text: string): boolean => {
     const stopKeywords = [
       'stop', 'pause', 'halt', 'quiet', 'silence', 'shut up', 'stop talking',
-      'stop speaking', 'stop audio', 'mute', 'end', 'cancel'
+      'stop speaking', 'stop audio', 'mute', 'end', 'cancel', 'wait'
     ];
     
-    const lowerText = text.toLowerCase();
+    const lowerText = text.toLowerCase().trim();
     return stopKeywords.some(keyword => lowerText.includes(keyword));
   }, []);
 
@@ -68,12 +68,12 @@ export const useEnhancedSpeechRecognition = (): EnhancedSpeechRecognitionHook =>
       isTTSPlayingRef.current = streamingTTSService.isCurrentlyPlaying();
     };
     
-    const interval = setInterval(checkTTSState, 500);
+    const interval = setInterval(checkTTSState, 100); // Check more frequently
     return () => clearInterval(interval);
   }, []);
 
   const handleSpeechStart = useCallback(() => {
-    if (!speechStartedRef.current && !isTTSPlayingRef.current) {
+    if (!speechStartedRef.current) {
       speechStartedRef.current = true;
       console.log('Enhanced STT: Speech started with audio processing');
       
@@ -116,16 +116,10 @@ export const useEnhancedSpeechRecognition = (): EnhancedSpeechRecognitionHook =>
     recognition.addEventListener('start', () => {
       console.log('Enhanced STT: Recognition started with context awareness');
       setIsRecording(true);
-      restartAttemptsRef.current = 0; // Reset restart attempts on successful start
+      restartAttemptsRef.current = 0;
     });
 
     recognition.addEventListener('result', async (event: any) => {
-      // Skip processing if TTS is playing to avoid interference
-      if (isTTSPlayingRef.current) {
-        console.log('Skipping speech recognition while TTS is playing');
-        return;
-      }
-
       let finalTranscript = '';
       let interimTranscript = '';
       let maxConfidence = 0;
@@ -139,29 +133,25 @@ export const useEnhancedSpeechRecognition = (): EnhancedSpeechRecognitionHook =>
           finalTranscript += transcript;
           maxConfidence = Math.max(maxConfidence, currentConfidence);
           
-          // Check for stop commands and stop TTS if detected
+          // Check for stop commands IMMEDIATELY and stop TTS
           if (isStopCommand(finalTranscript.trim())) {
-            console.log('Stop command detected, stopping TTS:', finalTranscript.trim());
+            console.log('STOP COMMAND DETECTED - Stopping TTS immediately:', finalTranscript.trim());
             streamingTTSService.stopPlayback();
+            // Don't process this as a regular command - just stop TTS
+            return;
           }
           
-          // Handle speech end detection
           handleSpeechEnd();
           
-          // Add command to sequencer for intelligent processing
           if (finalTranscript.trim()) {
             try {
               const sequencedCommands = await commandSequencer.addCommand(finalTranscript.trim());
               
               if (sequencedCommands.length > 0) {
-                // Combine multiple commands into one intelligent request
                 const combinedCommand = sequencedCommands.join('. ');
-                
-                // Finalize conversation turn with combined command
                 const turnId = conversationContextService.finalizeTurn(combinedCommand, maxConfidence);
                 currentTurnIdRef.current = turnId;
                 
-                // Send final result with turn ID
                 if (finalCallbackRef.current) {
                   console.log('Enhanced STT: Final sequenced result:', combinedCommand);
                   finalCallbackRef.current(combinedCommand, maxConfidence, turnId);
@@ -171,7 +161,6 @@ export const useEnhancedSpeechRecognition = (): EnhancedSpeechRecognitionHook =>
               }
             } catch (error) {
               console.error('Command sequencing error:', error);
-              // Fallback to original behavior
               const turnId = conversationContextService.finalizeTurn(finalTranscript.trim(), maxConfidence);
               currentTurnIdRef.current = turnId;
               
@@ -183,29 +172,25 @@ export const useEnhancedSpeechRecognition = (): EnhancedSpeechRecognitionHook =>
             }
           }
           
-          // Clear partial transcript after final result
           setPartialTranscript('');
           lastPartialTranscriptRef.current = '';
         } else {
           interimTranscript += transcript;
           
-          // Handle speech start detection (only if TTS is not playing)
-          if (interimTranscript.trim() && !speechStartedRef.current && !isTTSPlayingRef.current) {
-            handleSpeechStart();
-          }
-          
-          // Check for stop commands in partial transcript and stop TTS immediately
+          // Check for stop commands in partial transcript and stop TTS IMMEDIATELY
           if (isStopCommand(interimTranscript.trim())) {
-            console.log('Stop command detected in partial transcript, stopping TTS:', interimTranscript.trim());
+            console.log('PARTIAL STOP COMMAND - Stopping TTS immediately:', interimTranscript.trim());
             streamingTTSService.stopPlayback();
           }
           
-          // Update conversation context with partial result (only if TTS is not playing)
-          if (interimTranscript.trim() !== lastPartialTranscriptRef.current && !isTTSPlayingRef.current) {
+          if (interimTranscript.trim() && !speechStartedRef.current) {
+            handleSpeechStart();
+          }
+          
+          if (interimTranscript.trim() !== lastPartialTranscriptRef.current) {
             lastPartialTranscriptRef.current = interimTranscript.trim();
             setPartialTranscript(interimTranscript.trim());
             
-            // Add to conversation context
             conversationContextService.addPartialTranscript(interimTranscript.trim(), currentConfidence);
             
             if (partialCallbackRef.current && interimTranscript.trim()) {
@@ -220,24 +205,20 @@ export const useEnhancedSpeechRecognition = (): EnhancedSpeechRecognitionHook =>
     recognition.addEventListener('error', (event: any) => {
       console.error('Enhanced STT: Recognition error:', event.error);
       
-      // Handle different error types gracefully
       switch (event.error) {
         case 'no-speech':
-          // Don't restart immediately on no-speech to avoid loops
           console.log('No speech detected, waiting before restart...');
-          if (restartAttemptsRef.current < maxRestartAttemptsRef.current) {
+          if (restartAttemptsRef.current < maxRestartAttemptsRef.current && isActiveRef.current) {
             restartAttemptsRef.current++;
-            if (isActiveRef.current) {
-              restartTimeoutRef.current = setTimeout(() => {
-                if (isActiveRef.current && recognitionRef.current && !isTTSPlayingRef.current) {
-                  try {
-                    recognitionRef.current.start();
-                  } catch (error) {
-                    console.error('Enhanced STT: No-speech restart failed:', error);
-                  }
+            restartTimeoutRef.current = setTimeout(() => {
+              if (isActiveRef.current && recognitionRef.current) {
+                try {
+                  recognitionRef.current.start();
+                } catch (error) {
+                  console.error('Enhanced STT: No-speech restart failed:', error);
                 }
-              }, 2000); // Wait 2 seconds before restart
-            }
+              }
+            }, 2000);
           } else {
             console.log('Max restart attempts reached, stopping recognition');
             isActiveRef.current = false;
@@ -245,8 +226,7 @@ export const useEnhancedSpeechRecognition = (): EnhancedSpeechRecognitionHook =>
           }
           break;
         case 'aborted':
-          // Only restart if we're still supposed to be active and not due to TTS
-          if (isActiveRef.current && !isTTSPlayingRef.current) {
+          if (isActiveRef.current) {
             console.log('Recognition aborted, attempting restart...');
             restartTimeoutRef.current = setTimeout(() => {
               if (isActiveRef.current && recognitionRef.current) {
@@ -256,7 +236,7 @@ export const useEnhancedSpeechRecognition = (): EnhancedSpeechRecognitionHook =>
                   console.error('Enhanced STT: Aborted restart failed:', error);
                 }
               }
-            }, 1000);
+            }, 500); // Shorter delay for aborted errors
           }
           break;
         case 'not-allowed':
@@ -268,9 +248,6 @@ export const useEnhancedSpeechRecognition = (): EnhancedSpeechRecognitionHook =>
           isActiveRef.current = false;
           setIsRecording(false);
           break;
-        case 'network':
-          console.warn('Network error in speech recognition, continuing...');
-          break;
         default:
           console.warn('Enhanced STT: Unhandled error:', event.error);
       }
@@ -279,10 +256,10 @@ export const useEnhancedSpeechRecognition = (): EnhancedSpeechRecognitionHook =>
     recognition.addEventListener('end', () => {
       console.log('Enhanced STT: Recognition ended');
       
-      // Only restart if still active and TTS is not playing
-      if (isActiveRef.current && !isTTSPlayingRef.current) {
+      // Always restart if still active (keep recognition always on)
+      if (isActiveRef.current) {
         restartTimeoutRef.current = setTimeout(() => {
-          if (isActiveRef.current && !isTTSPlayingRef.current) {
+          if (isActiveRef.current) {
             try {
               if (recognitionRef.current) {
                 console.log('Enhanced STT: Restarting recognition for continuous listening');
@@ -290,21 +267,20 @@ export const useEnhancedSpeechRecognition = (): EnhancedSpeechRecognitionHook =>
               }
             } catch (error) {
               console.error('Enhanced STT: Auto-restart failed:', error);
-              // Try again after a longer delay
               if (isActiveRef.current) {
                 restartTimeoutRef.current = setTimeout(() => {
-                  if (isActiveRef.current && recognitionRef.current && !isTTSPlayingRef.current) {
+                  if (isActiveRef.current && recognitionRef.current) {
                     try {
                       recognitionRef.current.start();
                     } catch (retryError) {
                       console.error('Enhanced STT: Retry restart failed:', retryError);
                     }
                   }
-                }, 3000);
+                }, 1000);
               }
             }
           }
-        }, 500); // Short delay before restart
+        }, 300); // Very short delay for continuous operation
       } else {
         setIsRecording(false);
       }
@@ -320,9 +296,7 @@ export const useEnhancedSpeechRecognition = (): EnhancedSpeechRecognitionHook =>
     }
 
     try {
-      // Initialize audio processing service
       await audioProcessingService.initialize((audioData: Float32Array) => {
-        // Audio chunks are being processed - could be used for additional analysis
         console.log('Audio chunk processed:', audioData.length, 'samples');
       });
     } catch (error) {
@@ -359,7 +333,6 @@ export const useEnhancedSpeechRecognition = (): EnhancedSpeechRecognitionHook =>
     speechStartedRef.current = false;
     restartAttemptsRef.current = 0;
     
-    // Clean up existing recognition
     if (recognitionRef.current) {
       try {
         recognitionRef.current.stop();
@@ -368,16 +341,15 @@ export const useEnhancedSpeechRecognition = (): EnhancedSpeechRecognitionHook =>
       }
     }
 
-    // Initialize new recognition
     recognitionRef.current = initializeRecognition();
     
     if (recognitionRef.current) {
       try {
         recognitionRef.current.start();
-        console.log('Enhanced STT: Started continuous recognition with intelligent sequencing');
+        console.log('Enhanced STT: Started continuous recognition - ALWAYS ON MODE');
         toast({
-          title: "Enhanced Voice Recognition Started",
-          description: "Always-on listening with intelligent command sequencing active."
+          title: "Always-On Voice Recognition",
+          description: "Continuous listening active. Say 'stop', 'halt', or 'wait' to stop TTS."
         });
       } catch (error) {
         console.error('Enhanced STT: Start failed:', error);
@@ -393,11 +365,7 @@ export const useEnhancedSpeechRecognition = (): EnhancedSpeechRecognitionHook =>
     restartAttemptsRef.current = 0;
     
     clearTimeouts();
-    
-    // Cleanup audio processing
     audioProcessingService.cleanup();
-    
-    // Force process any pending commands
     commandSequencer.forceProcess();
     
     if (recognitionRef.current) {
@@ -419,7 +387,6 @@ export const useEnhancedSpeechRecognition = (): EnhancedSpeechRecognitionHook =>
     });
   }, [clearTimeouts, toast]);
 
-  // Cleanup on unmount
   useEffect(() => {
     return () => {
       isActiveRef.current = false;
