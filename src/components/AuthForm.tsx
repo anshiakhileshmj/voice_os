@@ -3,20 +3,25 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { toast } from "@/hooks/use-toast";
 import { useNavigate } from 'react-router-dom';
-import styled from 'styled-components';
 
 const AuthForm = () => {
   const { signUp, signIn, user } = useAuth();
   const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [name, setName] = useState('');
-  const [isSignUp, setIsSignUp] = useState(false);
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [companyName, setCompanyName] = useState('');
+  const [jobTitle, setJobTitle] = useState('');
+  const [phone, setPhone] = useState('');
+  const [country, setCountry] = useState('');
+  const [businessType, setBusinessType] = useState('');
+  const [isSignUp, setIsSignUp] = useState(true);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     if (user) {
-      // Redirect to app page after successful authentication
       navigate('/app');
     }
   }, [user, navigate]);
@@ -29,6 +34,16 @@ const AuthForm = () => {
       toast({
         title: "Missing Fields",
         description: "Please fill in all fields.",
+        variant: "destructive"
+      });
+      setLoading(false);
+      return;
+    }
+
+    if (isSignUp && password !== confirmPassword) {
+      toast({
+        title: "Password Mismatch",
+        description: "Passwords do not match.",
         variant: "destructive"
       });
       setLoading(false);
@@ -63,290 +78,324 @@ const AuthForm = () => {
 
   const handleToggle = () => {
     setIsSignUp(!isSignUp);
+    // Reset form fields when switching
     setEmail('');
     setPassword('');
-    setName('');
+    setConfirmPassword('');
+    setFirstName('');
+    setLastName('');
+    setCompanyName('');
+    setJobTitle('');
+    setPhone('');
+    setCountry('');
+    setBusinessType('');
   };
 
   return (
-    <StyledWrapper>
-      <div className="wrapper">
-        <div className="card-switch">
-          <label className="switch">
-            <input 
-              type="checkbox" 
-              className="toggle" 
-              checked={isSignUp}
-              onChange={handleToggle}
-            />
-            <span className="slider" />
-            <span className="card-side" />
-            <div className="flip-card__inner">
-              <div className="flip-card__front">
-                <div className="title">Log in</div>
-                <form className="flip-card__form" onSubmit={handleSubmit}>
-                  <input 
-                    className="flip-card__input" 
-                    name="email" 
-                    placeholder="Email" 
-                    type="email" 
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    required
-                  />
-                  <input 
-                    className="flip-card__input" 
-                    name="password" 
-                    placeholder="Password" 
-                    type="password" 
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    required
-                  />
-                  <button className="flip-card__btn" type="submit" disabled={loading}>
-                    {loading ? "Loading..." : "Let's go!"}
-                  </button>
-                </form>
+    <div className="auth-form-container">
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Fredoka+One&display=swap');
+        
+        .auth-form-container {
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          min-height: 100vh;
+          font-family: 'Fredoka One', cursive, sans-serif;
+        }
+        
+        .flip-card__back {
+          width: 550px;
+          min-width: 320px;
+          max-width: 95vw;
+          height: auto;
+          padding: 20px 18px;
+          position: relative;
+          display: flex;
+          flex-direction: column;
+          justify-content: center;
+          background: white;
+          gap: 16px;
+          border-radius: 5px;
+          border: 2px solid #323232;
+          box-shadow: 4px 4px #323232;
+          color: #323232;
+          box-sizing: border-box;
+          margin: 0 auto;
+        }
+        
+        .title {
+          margin: 20px 0;
+          font-size: 25px;
+          font-weight: 900;
+          text-align: center;
+          color: #323232;
+        }
+        
+        .auth-form {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 12px;
+          width: 100%;
+        }
+        
+        .row-top {
+          display: flex;
+          gap: 12px;
+          justify-content: center;
+          width: 100%;
+        }
+        
+        .phone-country-row {
+          display: flex;
+          gap: 12px;
+          justify-content: center;
+          width: 100%;
+          align-items: center;
+        }
+        
+        .flip-card__input, .phone-number, .country-select {
+          height: 40px;
+          border-radius: 5px;
+          border: 2px solid #323232;
+          background-color: white;
+          box-shadow: 4px 4px #323232;
+          font-size: 15px;
+          font-weight: 600;
+          color: #323232;
+          padding: 5px 10px;
+          outline: none;
+          box-sizing: border-box;
+          flex: 1;
+          min-width: 0;
+          max-width: 250px;
+        }
+        
+        .flip-card__input::placeholder, .phone-number::placeholder {
+          color: #666;
+          opacity: 0.8;
+        }
+        
+        .flip-card__input:focus, .phone-number:focus, .country-select:focus {
+          border: 2px solid #666;
+          outline: none;
+        }
+        
+        .button-confirm {
+          margin: 18px auto 6px auto;
+          width: 120px;
+          height: 40px;
+          border-radius: 5px;
+          border: 2px solid #323232;
+          background-color: white;
+          box-shadow: 4px 4px #323232;
+          font-size: 17px;
+          font-weight: 600;
+          color: #323232;
+          cursor: pointer;
+          display: block;
+          transition: transform 0.1s, box-shadow 0.1s;
+        }
+        
+        .button-confirm:active {
+          box-shadow: 0 0 #323232;
+          transform: translate(3px, 3px);
+        }
+        
+        .button-confirm:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
+        }
+        
+        .signin-signup-link {
+          text-align: center;
+          margin-top: 2px;
+          margin-bottom: 2px;
+          font-size: 16px;
+        }
+        
+        .signin-signup-link span {
+          color: #666;
+          font-weight: 700;
+          cursor: pointer;
+          text-decoration: underline;
+        }
+        
+        @media (max-width: 700px) {
+          .flip-card__back {
+            width: 98vw;
+            min-width: 0;
+            padding: 12px;
+          }
+          .button-confirm {
+            width: 100%;
+          }
+        }
+      `}</style>
+      
+      <div className="flip-card__back">
+        <h1 className="title">{isSignUp ? 'Sign up' : 'Sign in'}</h1>
+        <form className="auth-form" onSubmit={handleSubmit}>
+          {isSignUp ? (
+            <>
+              <div className="row-top">
+                <input
+                  type="text"
+                  placeholder="First Name"
+                  className="flip-card__input"
+                  value={firstName}
+                  onChange={(e) => setFirstName(e.target.value)}
+                  required
+                />
+                <input
+                  type="text"
+                  placeholder="Last Name"
+                  className="flip-card__input"
+                  value={lastName}
+                  onChange={(e) => setLastName(e.target.value)}
+                  required
+                />
               </div>
-              <div className="flip-card__back">
-                <div className="title">Sign up</div>
-                <form className="flip-card__form" onSubmit={handleSubmit}>
-                  <input 
-                    className="flip-card__input" 
-                    placeholder="Name" 
-                    type="text" 
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                  />
-                  <input 
-                    className="flip-card__input" 
-                    name="email" 
-                    placeholder="Email" 
-                    type="email" 
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    required
-                  />
-                  <input 
-                    className="flip-card__input" 
-                    name="password" 
-                    placeholder="Password" 
-                    type="password" 
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    required
-                  />
-                  <button className="flip-card__btn" type="submit" disabled={loading}>
-                    {loading ? "Loading..." : "Confirm!"}
-                  </button>
-                </form>
+              <div className="row-top">
+                <input
+                  type="text"
+                  placeholder="Company Name"
+                  className="flip-card__input"
+                  value={companyName}
+                  onChange={(e) => setCompanyName(e.target.value)}
+                  required
+                />
+                <input
+                  type="text"
+                  placeholder="Job Title"
+                  className="flip-card__input"
+                  value={jobTitle}
+                  onChange={(e) => setJobTitle(e.target.value)}
+                  required
+                />
               </div>
-            </div>
-          </label>
-        </div>   
+              <div className="row-top">
+                <input
+                  type="email"
+                  placeholder="Email"
+                  className="flip-card__input"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                />
+                <input
+                  type="tel"
+                  placeholder="Phone number"
+                  className="phone-number"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  required
+                />
+              </div>
+              <div className="row-top">
+                <input
+                  type="password"
+                  placeholder="Password"
+                  className="flip-card__input"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                />
+                <input
+                  type="password"
+                  placeholder="Confirm password"
+                  className="flip-card__input"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  required
+                />
+              </div>
+              <div className="phone-country-row">
+                <select 
+                  className="country-select" 
+                  value={country}
+                  onChange={(e) => setCountry(e.target.value)}
+                  required
+                >
+                  <option value="" disabled>Select country</option>
+                  <option value="af">Afghanistan</option>
+                  <option value="al">Albania</option>
+                  <option value="dz">Algeria</option>
+                  <option value="us">United States</option>
+                  <option value="gb">United Kingdom</option>
+                  <option value="ca">Canada</option>
+                  <option value="au">Australia</option>
+                  <option value="in">India</option>
+                  <option value="de">Germany</option>
+                  <option value="fr">France</option>
+                  <option value="jp">Japan</option>
+                  <option value="br">Brazil</option>
+                  <option value="mx">Mexico</option>
+                  <option value="cn">China</option>
+                  <option value="ru">Russia</option>
+                </select>
+                <select 
+                  className="country-select"
+                  value={businessType}
+                  onChange={(e) => setBusinessType(e.target.value)}
+                  required
+                >
+                  <option value="" disabled>Select business type</option>
+                  <option value="cryptocurrency-exchange">Cryptocurrency Exchange</option>
+                  <option value="payment-processor">Payment Processor</option>
+                  <option value="digital-wallet-provider">Digital Wallet Provider</option>
+                  <option value="defi-protocol">DeFi Protocol</option>
+                  <option value="banking-institution">Banking Institution</option>
+                  <option value="fintech-startup">Fintech Startup</option>
+                  <option value="compliance-firm">Compliance Firm</option>
+                  <option value="other">Other</option>
+                </select>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="row-top">
+                <input
+                  type="email"
+                  placeholder="Email"
+                  className="flip-card__input"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                />
+              </div>
+              <div className="row-top">
+                <input
+                  type="password"
+                  placeholder="Password"
+                  className="flip-card__input"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                />
+              </div>
+            </>
+          )}
+          
+          <button 
+            type="submit" 
+            className="button-confirm" 
+            disabled={loading}
+          >
+            {loading ? "Loading..." : (isSignUp ? "Confirm!" : "Let's go")}
+          </button>
+        </form>
+        
+        <div className="signin-signup-link">
+          {isSignUp ? "Existing user?" : "New user?"}
+          <span onClick={handleToggle}>
+            {isSignUp ? "Sign in" : "Sign up"}
+          </span>
+        </div>
       </div>
-    </StyledWrapper>
+    </div>
   );
 };
-
-const StyledWrapper = styled.div`
-  .wrapper {
-    --input-focus: #2d8cf0;
-    --font-color: #323232;
-    --font-color-sub: #666;
-    --bg-color: #fff;
-    --bg-color-alt: #666;
-    --main-color: #323232;
-  }
-  /* switch card */
-  .switch {
-    transform: translateY(-200px);
-    position: relative;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    align-items: center;
-    gap: 30px;
-    width: 50px;
-    height: 20px;
-  }
-
-  .card-side::before {
-    position: absolute;
-    content: 'Log in';
-    left: -70px;
-    top: 0;
-    width: 100px;
-    text-decoration: underline;
-    color: var(--font-color);
-    font-weight: 600;
-  }
-
-  .card-side::after {
-    position: absolute;
-    content: 'Sign up';
-    left: 70px;
-    top: 0;
-    width: 100px;
-    text-decoration: none;
-    color: var(--font-color);
-    font-weight: 600;
-  }
-
-  .toggle {
-    opacity: 0;
-    width: 0;
-    height: 0;
-  }
-
-  .slider {
-    box-sizing: border-box;
-    border-radius: 5px;
-    border: 2px solid var(--main-color);
-    box-shadow: 4px 4px var(--main-color);
-    position: absolute;
-    cursor: pointer;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background-color: var(--bg-color);
-    transition: 0.3s;
-  }
-
-  .slider:before {
-    box-sizing: border-box;
-    position: absolute;
-    content: "";
-    height: 20px;
-    width: 20px;
-    border: 2px solid var(--main-color);
-    border-radius: 5px;
-    left: -2px;
-    bottom: 2px;
-    background-color: var(--bg-color);
-    box-shadow: 0 3px 0 var(--main-color);
-    transition: 0.3s;
-  }
-
-  .toggle:checked + .slider {
-    background-color: var(--input-focus);
-  }
-
-  .toggle:checked + .slider:before {
-    transform: translateX(30px);
-  }
-
-  .toggle:checked ~ .card-side:before {
-    text-decoration: none;
-  }
-
-  .toggle:checked ~ .card-side:after {
-    text-decoration: underline;
-  }
-
-  /* card */ 
-
-  .flip-card__inner {
-    width: 300px;
-    height: 350px;
-    position: relative;
-    background-color: transparent;
-    perspective: 1000px;
-    text-align: center;
-    transition: transform 0.8s;
-    transform-style: preserve-3d;
-  }
-
-  .toggle:checked ~ .flip-card__inner {
-    transform: rotateY(180deg);
-  }
-
-  .toggle:checked ~ .flip-card__front {
-    box-shadow: none;
-  }
-
-  .flip-card__front, .flip-card__back {
-    padding: 20px;
-    position: absolute;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    -webkit-backface-visibility: hidden;
-    backface-visibility: hidden;
-    background: lightgrey;
-    gap: 20px;
-    border-radius: 5px;
-    border: 2px solid var(--main-color);
-    box-shadow: 4px 4px var(--main-color);
-  }
-
-  .flip-card__back {
-    width: 100%;
-    transform: rotateY(180deg);
-  }
-
-  .flip-card__form {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 20px;
-  }
-
-  .title {
-    margin: 20px 0 20px 0;
-    font-size: 25px;
-    font-weight: 900;
-    text-align: center;
-    color: var(--main-color);
-  }
-
-  .flip-card__input {
-    width: 250px;
-    height: 40px;
-    border-radius: 5px;
-    border: 2px solid var(--main-color);
-    background-color: var(--bg-color);
-    box-shadow: 4px 4px var(--main-color);
-    font-size: 15px;
-    font-weight: 600;
-    color: var(--font-color);
-    padding: 5px 10px;
-    outline: none;
-  }
-
-  .flip-card__input::placeholder {
-    color: var(--font-color-sub);
-    opacity: 0.8;
-  }
-
-  .flip-card__input:focus {
-    border: 2px solid var(--input-focus);
-  }
-
-  .flip-card__btn:active, .button-confirm:active {
-    box-shadow: 0px 0px var(--main-color);
-    transform: translate(3px, 3px);
-  }
-
-  .flip-card__btn {
-    margin: 20px 0 20px 0;
-    width: 120px;
-    height: 40px;
-    border-radius: 5px;
-    border: 2px solid var(--main-color);
-    background-color: var(--bg-color);
-    box-shadow: 4px 4px var(--main-color);
-    font-size: 17px;
-    font-weight: 600;
-    color: var(--font-color);
-    cursor: pointer;
-  }
-
-  .flip-card__btn:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-  }
-`;
 
 export default AuthForm;
